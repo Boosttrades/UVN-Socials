@@ -343,6 +343,32 @@ export const MOCK_NOTIFICATIONS: Notification[] = [
   { id: 'n10', type: 'comment', actor: 'Ngozi Agbor', actorInitials: 'NA', actorColor: '#1D4ED8', message: 'replied to your comment on the expressway rehabilitation post', timeAgo: '3d ago', read: true },
 ];
 
+export interface Comment {
+  id: string;
+  postId: string;
+  author: Author;
+  body: string;
+  timeAgo: string;
+  likes: number;
+  replyTo?: string;
+}
+
+export const MOCK_COMMENTS: Comment[] = [
+  // Emergency flood post
+  { id: 'c1', postId: 'post-emergency-1', author: INDIVIDUALS[0], body: 'Please everyone in Agbarho, take this seriously. The water rose very fast last time.', timeAgo: '8m ago', likes: 23 },
+  { id: 'c2', postId: 'post-emergency-1', author: INDIVIDUALS[3], body: 'My family is already moving. Thank you for the alert Ughelli North LGA.', timeAgo: '6m ago', likes: 14, replyTo: 'emekaokafor' },
+  { id: 'c3', postId: 'post-emergency-1', author: ORGS[1], body: 'Emergency shelter is available at the Agbarho Community Hall. Please bring your ID. We are here to help.', timeAgo: '4m ago', likes: 78 },
+  { id: 'c4', postId: 'post-emergency-1', author: INDIVIDUALS[2], body: 'Road to Agbarho from Ughelli junction is still passable but drive carefully, there is water on the road.', timeAgo: '2m ago', likes: 9 },
+  // News - expressway
+  { id: 'c5', postId: 'post-news-1', author: INDIVIDUALS[4], body: 'This road has needed fixing for over 10 years. Let us hope they actually complete it this time.', timeAgo: '45m ago', likes: 88 },
+  { id: 'c6', postId: 'post-news-1', author: INDIVIDUALS[1], body: 'Mobilisation funds released is the first step. Monitoring execution is what matters now.', timeAgo: '38m ago', likes: 34 },
+  { id: 'c7', postId: 'post-news-1', author: ORGS[5], body: 'We will be tracking this project and reporting updates every two weeks. Follow us for coverage.', timeAgo: '20m ago', likes: 56 },
+  // Jobs - Chevron
+  { id: 'c8', postId: 'post-jobs-1', author: INDIVIDUALS[2], body: 'What qualifications are required? Is HND accepted or only B.Eng?', timeAgo: '1h ago', likes: 5 },
+  { id: 'c9', postId: 'post-jobs-1', author: ORGS[2], body: 'B.Eng minimum is required for this role. Full requirements are on our careers page.', timeAgo: '50m ago', likes: 12, replyTo: 'festusovuede' },
+  { id: 'c10', postId: 'post-jobs-1', author: INDIVIDUALS[0], body: 'Finally some oil & gas jobs in Ughelli itself rather than having to relocate to Port Harcourt!', timeAgo: '30m ago', likes: 41 },
+];
+
 export const TRENDING_TOPICS: TrendingTopic[] = [
   { id: 't1', tag: '#UghelliFloods', postsCount: '1.2K posts', category: 'Emergency' },
   { id: 't2', tag: '#UghelliFC', postsCount: '890 posts', category: 'Sports' },

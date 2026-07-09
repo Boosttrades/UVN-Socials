@@ -3,6 +3,7 @@ import {
   Image,
   Platform,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -10,6 +11,7 @@ import {
 } from 'react-native';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
 import { CATEGORY_COLORS, type FeedPost } from '@/constants/mockData';
 
@@ -25,6 +27,7 @@ function formatCount(n: number): string {
 
 export default function FeedCard({ post, onPress }: FeedCardProps) {
   const colors = useColors();
+  const router = useRouter();
   const [liked, setLiked] = useState(false);
   const [bookmarked, setBookmarked] = useState(post.isBookmarked);
   const [likeCount, setLikeCount] = useState(post.likes);
@@ -47,13 +50,31 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
     setBookmarked((v) => !v);
   }
 
+  function handleCardPress() {
+    if (onPress) { onPress(post); return; }
+    router.push(`/post/${post.id}` as any);
+  }
+
+  function handleComment() {
+    router.push(`/post/${post.id}` as any);
+  }
+
+  async function handleShare() {
+    try {
+      await Share.share({
+        message: `${post.headline}\n\nShared via Ughelli Vibes TV`,
+        title: post.headline,
+      });
+    } catch {}
+  }
+
   const cardBg = isEmergency ? '#FEF2F2' : colors.card;
   const cardBorderColor = isEmergency ? '#DC2626' : colors.border;
 
   return (
     <TouchableOpacity
       activeOpacity={0.97}
-      onPress={() => onPress?.(post)}
+      onPress={handleCardPress}
       style={[
         styles.card,
         {
@@ -195,14 +216,14 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
           </Text>
         </Pressable>
 
-        <Pressable style={styles.reactionBtn}>
+        <Pressable style={styles.reactionBtn} onPress={handleComment} accessibilityLabel="View comments" accessibilityRole="button">
           <Ionicons name="chatbubble-outline" size={14} color={colors.mutedForeground} />
           <Text style={[styles.reactionCount, { color: colors.mutedForeground }]}>
             {formatCount(post.comments)}
           </Text>
         </Pressable>
 
-        <Pressable style={styles.reactionBtn}>
+        <Pressable style={styles.reactionBtn} onPress={handleShare} accessibilityLabel="Share post" accessibilityRole="button">
           <Feather name="share-2" size={14} color={colors.mutedForeground} />
           <Text style={[styles.reactionCount, { color: colors.mutedForeground }]}>
             {formatCount(post.shares)}

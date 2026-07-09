@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import FeedCard from '@/components/FeedCard';
@@ -22,6 +23,7 @@ const SAVED_POSTS = MOCK_FEED.filter((p) => p.isBookmarked);
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<ProfileTab>('Updates');
 
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
@@ -32,7 +34,7 @@ export default function ProfileScreen() {
     <View>
       {/* Cover */}
       <View style={[styles.cover, { backgroundColor: colors.primary, paddingTop: topInset }]}>
-        <Pressable style={styles.settingsBtn} hitSlop={8}>
+        <Pressable style={styles.settingsBtn} hitSlop={8} onPress={() => router.push('/settings' as any)} accessibilityLabel="Settings" accessibilityRole="button">
           <Feather name="settings" size={20} color="#FFFFFF" />
         </Pressable>
       </View>
