@@ -1,1 +1,2 @@
 - [Ughelli Vibes product direction](ughelli-vibes-product.md) — X-inspired local news network; key design and architecture decisions
+- [Auth implementation](auth-implementation.md) — Argon2id sessions, email verify flow, Expo auth gate, key files and gotchas
