@@ -37,7 +37,7 @@ export default function ActivityScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<FilterTab>('All');
-  const [notifications, setNotifications] = useState(MOCK_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<typeof MOCK_NOTIFICATIONS>([]);
 
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomPad = Platform.OS === 'web' ? 84 : insets.bottom + 60;

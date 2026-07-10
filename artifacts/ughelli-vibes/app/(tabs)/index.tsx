@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import FeedCard from '@/components/FeedCard';
 import EmergencyBanner from '@/components/EmergencyBanner';
-import { ALL_CATEGORIES, MOCK_FEED, type FeedPost, type PostCategory } from '@/constants/mockData';
+import { ALL_CATEGORIES, type PostCategory } from '@/constants/mockData';
 
 type FilterOption = 'All' | PostCategory;
 const FILTER_TABS: FilterOption[] = ['All', ...ALL_CATEGORIES];
@@ -28,8 +28,7 @@ export default function ForYouScreen() {
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomPad = Platform.OS === 'web' ? 84 : insets.bottom + 60;
 
-  const filteredPosts: FeedPost[] =
-    activeFilter === 'All' ? MOCK_FEED : MOCK_FEED.filter((p) => p.category === activeFilter);
+  const filteredPosts: never[] = [];
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -122,8 +121,11 @@ export default function ForYouScreen() {
         ListEmptyComponent={
           <View style={styles.empty}>
             <Feather name="inbox" size={40} color={colors.mutedForeground} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-              No updates in this category
+            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+              No updates yet
+            </Text>
+            <Text style={[styles.emptyHint, { color: colors.mutedForeground }]}>
+              Be the first to post something to the community
             </Text>
           </View>
         }
@@ -201,10 +203,18 @@ const styles = StyleSheet.create({
   empty: {
     alignItems: 'center',
     paddingTop: 80,
-    gap: 12,
+    paddingHorizontal: 32,
+    gap: 8,
   },
-  emptyText: {
-    fontSize: 15,
+  emptyTitle: {
+    fontSize: 16,
+    fontFamily: 'Inter_600SemiBold',
+    marginTop: 4,
+  },
+  emptyHint: {
+    fontSize: 14,
     fontFamily: 'Inter_400Regular',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
