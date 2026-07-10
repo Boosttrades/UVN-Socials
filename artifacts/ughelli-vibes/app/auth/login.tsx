@@ -17,13 +17,17 @@ import { ApiError } from '@/utils/api';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, resendVerification } = useAuth();
   const insets = useSafeAreaInsets();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // When the API returns EMAIL_NOT_VERIFIED we switch into "unverified" mode
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+  const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent'>('idle');
 
   async function handleLogin() {
     if (!email.trim() || !password) {
@@ -32,18 +36,34 @@ export default function LoginScreen() {
     }
 
     setError('');
+    setUnverifiedEmail(null);
+    setResendState('idle');
     setLoading(true);
     try {
       await login(email.trim(), password);
-      // AuthContext updates → _layout redirects to (tabs)
+      // AuthContext updates → _layout.tsx redirects to (tabs)
     } catch (err) {
-      if (err instanceof ApiError) {
+      if (err instanceof ApiError && err.code === 'EMAIL_NOT_VERIFIED') {
+        setUnverifiedEmail(email.trim());
+      } else if (err instanceof ApiError) {
         setError(err.message);
       } else {
         setError('Something went wrong. Please try again.');
       }
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleResend() {
+    if (!unverifiedEmail || resendState !== 'idle') return;
+    setResendState('sending');
+    try {
+      await resendVerification(unverifiedEmail);
+      setResendState('sent');
+    } catch {
+      setResendState('idle');
+      setError('Could not resend the email. Please try again.');
     }
   }
 
@@ -72,9 +92,37 @@ export default function LoginScreen() {
         <View style={styles.form}>
           <Text style={styles.title}>Welcome back</Text>
 
+          {/* Generic error */}
           {error ? (
             <View style={styles.errorBox}>
               <Text style={styles.errorText}>{error}</Text>
+            </View>
+          ) : null}
+
+          {/* Email-not-verified banner */}
+          {unverifiedEmail ? (
+            <View style={styles.warningBox}>
+              <Text style={styles.warningTitle}>Email not verified</Text>
+              <Text style={styles.warningBody}>
+                Check your inbox for the verification link we sent to{' '}
+                <Text style={styles.warningEmail}>{unverifiedEmail}</Text>.
+              </Text>
+
+              {resendState === 'sent' ? (
+                <Text style={styles.sentText}>✓ A new link has been sent — check your inbox.</Text>
+              ) : (
+                <Pressable
+                  onPress={handleResend}
+                  disabled={resendState === 'sending'}
+                  style={styles.resendBtn}
+                >
+                  {resendState === 'sending' ? (
+                    <ActivityIndicator size="small" color={PRIMARY} />
+                  ) : (
+                    <Text style={styles.resendBtnText}>Resend verification email</Text>
+                  )}
+                </Pressable>
+              )}
             </View>
           ) : null}
 
@@ -85,7 +133,11 @@ export default function LoginScreen() {
               placeholder="john@email.com"
               placeholderTextColor="#9CA3AF"
               value={email}
-              onChangeText={setEmail}
+              onChangeText={(t) => {
+                setEmail(t);
+                setUnverifiedEmail(null);
+                setResendState('idle');
+              }}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="email-address"
@@ -162,6 +214,36 @@ const styles = StyleSheet.create({
     borderColor: '#FECACA',
   },
   errorText: { color: '#DC2626', fontSize: 14, fontFamily: 'Inter_400Regular' },
+
+  warningBox: {
+    backgroundColor: '#FFFBEB',
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  warningTitle: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+    color: '#92400E',
+    marginBottom: 4,
+  },
+  warningBody: { fontSize: 13, fontFamily: 'Inter_400Regular', color: '#78350F', lineHeight: 18 },
+  warningEmail: { fontFamily: 'Inter_600SemiBold' },
+  resendBtn: { marginTop: 10, alignSelf: 'flex-start' },
+  resendBtnText: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    color: PRIMARY,
+    textDecorationLine: 'underline',
+  },
+  sentText: {
+    marginTop: 8,
+    fontSize: 13,
+    fontFamily: 'Inter_500Medium',
+    color: '#065F46',
+  },
 
   field: { marginBottom: 16 },
   label: { fontSize: 14, fontFamily: 'Inter_500Medium', color: '#374151', marginBottom: 6 },

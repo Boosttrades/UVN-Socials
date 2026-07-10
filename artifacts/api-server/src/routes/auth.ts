@@ -240,6 +240,42 @@ router.get("/verify", async (req, res) => {
   );
 });
 
+// ─── POST /api/auth/resend-verification ─────────────────────────────────────
+
+router.post("/resend-verification", async (req, res) => {
+  const email = req.body?.email;
+  if (!email || typeof email !== "string") {
+    res.status(400).json({ error: "Email is required" });
+    return;
+  }
+
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.email, email.toLowerCase().trim()))
+    .limit(1);
+
+  // Always return success — don't reveal whether the email exists
+  if (!user || user.emailVerified) {
+    res.json({ message: "If that account exists and is unverified, a new link has been sent." });
+    return;
+  }
+
+  // Issue a fresh token
+  const verificationToken = generateToken();
+  const verificationTokenExpiresAt = verificationExpiresAt();
+
+  await db
+    .update(usersTable)
+    .set({ verificationToken, verificationTokenExpiresAt })
+    .where(eq(usersTable.id, user.id));
+
+  const verificationUrl = `${getAppBaseUrl(req)}/api/auth/verify?token=${verificationToken}`;
+  await sendVerificationEmail({ to: user.email, name: user.name, verificationUrl });
+
+  res.json({ message: "If that account exists and is unverified, a new link has been sent." });
+});
+
 // ─── POST /api/auth/logout ───────────────────────────────────────────────────
 
 router.post("/logout", requireAuth, async (req, res) => {

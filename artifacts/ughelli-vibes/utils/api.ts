@@ -48,12 +48,15 @@ export async function apiRequest<T = unknown>(
 }
 
 export class ApiError extends Error {
+  public readonly code?: string;
+
   constructor(
     message: string,
     public readonly status: number,
-    public readonly data?: unknown
+    public readonly data?: Record<string, unknown>
   ) {
     super(message);
     this.name = 'ApiError';
+    this.code = typeof data?.code === 'string' ? data.code : undefined;
   }
 }

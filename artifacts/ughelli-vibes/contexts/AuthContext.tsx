@@ -25,6 +25,7 @@ interface AuthContextValue {
     password: string;
   }) => Promise<{ message: string }>;
   logout: () => Promise<void>;
+  resendVerification: (email: string) => Promise<void>;
 }
 
 // ─── Context ─────────────────────────────────────────────────────────────────
@@ -84,6 +85,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const resendVerification = useCallback(async (email: string) => {
+    await apiRequest('/auth/resend-verification', {
+      method: 'POST',
+      body: { email },
+    });
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       if (token) {
@@ -98,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, signup, logout, resendVerification }}>
       {children}
     </AuthContext.Provider>
   );
