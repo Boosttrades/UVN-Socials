@@ -64,7 +64,7 @@ Local news, sports, weather, and emergency alerts for Ughelli. Five tabs: Home f
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Keep `artifacts/ughelli-vibes/README.md` up to date at every checkpoint — list all added/changed features there so collaborators know what's built and where to continue.
 
 ## Gotchas
 

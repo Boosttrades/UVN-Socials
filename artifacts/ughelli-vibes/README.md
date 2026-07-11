@@ -7,6 +7,8 @@ Last updated: July 11, 2026
 ## What's real right now
 
 - **Accounts & login** — signup, login, logout, email verification (via Resend), resend-verification flow. Argon2id password hashing, DB-backed sessions (30-day Bearer tokens). See `contexts/AuthContext.tsx` and `artifacts/api-server/src/routes/auth.ts`.
+- **Forgot / reset password** — "Forgot password?" on the login screen → `app/auth/forgot-password.tsx` (enter email) → email with a link to `app/auth/reset-password.tsx?token=...` → set + confirm a new password. Backend: `POST /api/auth/forgot-password` and `POST /api/auth/reset-password` in `artifacts/api-server/src/routes/auth.ts`. Reset tokens expire in 1 hour; resetting a password deletes all of that user's existing sessions. Email delivery is subject to the same Resend test-mode limitation as signup verification (see Known gotchas).
+- **Username handles** — usernames are enforced unique by the database and the signup API (`409 Username is already taken`); the signup form now shows the `@` prefix inline (`app/auth/signup.tsx`) to match how handles are displayed everywhere else (profile, post detail, comments).
 - **Posting** — the Create tab posts to a real `POST /api/posts` endpoint. No more "fake success" — a failed request shows a real inline error.
 - **Feed ("For You")** — reads real posts from `GET /api/posts` via `hooks/usePosts.ts` (TanStack Query), newest first, filterable by category, pull-to-refresh re-fetches.
 - **Profile** — shows the logged-in user's real name/handle/initials and their real posts + a real post count. No mock stats beyond followers/following (which have no backend yet, so they read 0).
@@ -29,12 +31,14 @@ Last updated: July 11, 2026
 
 ## Key files if you're picking this up
 
-- `lib/db/src/schema/{users,sessions,posts}.ts` — Drizzle schema
+- `lib/db/src/schema/{users,sessions,posts}.ts` — Drizzle schema (`users` now also has `resetToken`/`resetTokenExpiresAt`)
 - `artifacts/api-server/src/routes/{auth,posts}.ts` — API routes
 - `artifacts/api-server/src/middlewares/auth.ts` — `requireAuth` middleware
+- `artifacts/api-server/src/lib/email.ts` — Resend integration (verification + password reset emails)
 - `artifacts/ughelli-vibes/contexts/AuthContext.tsx` — client session state
 - `artifacts/ughelli-vibes/hooks/usePosts.ts` — feed fetch + create-post mutation, plus the mapping from API post shape to the UI's `FeedPost` shape
 - `artifacts/ughelli-vibes/app/_layout.tsx` — `AuthGate` redirect logic (segments + router.replace pattern)
+- `artifacts/ughelli-vibes/app/auth/{forgot-password,reset-password}.tsx` — password reset screens
 
 ## Known gotchas
 
