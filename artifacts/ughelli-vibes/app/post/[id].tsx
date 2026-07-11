@@ -18,9 +18,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useColors } from '@/hooks/useColors';
-import { CATEGORY_COLORS, type Comment } from '@/constants/mockData';
+import { CATEGORY_COLORS } from '@/constants/mockData';
 import { useAuth } from '@/contexts/AuthContext';
-import { useFeed } from '@/hooks/usePosts';
+import { useComments, useCreateComment, useFeed } from '@/hooks/usePosts';
 
 function formatCount(n: number) {
   if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
@@ -32,8 +32,6 @@ function getInitials(name: string): string {
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
-
-const postComments: Comment[] = [];
 
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -49,8 +47,10 @@ export default function PostDetailScreen() {
   const [bookmarked, setBookmarked] = useState(post?.isBookmarked ?? false);
   const [likeCount, setLikeCount] = useState(post?.likes ?? 0);
   const [replyText, setReplyText] = useState('');
-  const [comments, setComments] = useState<Comment[]>(postComments);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
+
+  const { data: comments = [], isLoading: commentsLoading } = useComments(id);
+  const createComment = useCreateComment(id);
 
   if (!post) {
     return (
@@ -91,26 +91,17 @@ export default function PostDetailScreen() {
   }
 
   function handleSendReply() {
-    if (!replyText.trim() || !user) return;
+    const body = replyText.trim();
+    if (!body || !user) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const newComment: Comment = {
-      id: `c-new-${Date.now()}`,
-      postId: safePost.id,
-      author: {
-        id: user.id,
-        name: user.name,
-        handle: user.username,
-        verified: false,
-        isOrg: false,
-        initials: getInitials(user.name),
-        avatarColor: '#066A46',
-      },
-      body: replyText.trim(),
-      timeAgo: 'Just now',
-      likes: 0,
-      replyTo: replyingTo ?? undefined,
-    };
-    setComments((prev) => [newComment, ...prev]);
+    createComment.mutate(
+      { body, replyToHandle: replyingTo ?? undefined },
+      {
+        onError: () => {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        },
+      }
+    );
     setReplyText('');
     setReplyingTo(null);
     Keyboard.dismiss();
@@ -188,7 +179,7 @@ export default function PostDetailScreen() {
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold' }}>{formatCount(likeCount)}</Text> likes
           </Text>
           <Text style={[styles.statText, { color: colors.mutedForeground }]}>
-            <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold' }}>{formatCount(safePost.comments + Math.max(0, comments.length - postComments.length))}</Text> comments
+            <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold' }}>{formatCount(comments.length)}</Text> comments
           </Text>
           <Text style={[styles.statText, { color: colors.mutedForeground }]}>
             <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold' }}>{formatCount(safePost.shares)}</Text> shares
@@ -219,7 +210,7 @@ export default function PostDetailScreen() {
       {/* Comments header */}
       <View style={[styles.commentsHeader, { borderBottomColor: colors.border }]}>
         <Text style={[styles.commentsTitle, { color: colors.foreground }]}>
-          {safePost.comments + Math.max(0, comments.length - postComments.length)} Comments
+          {comments.length} Comments
         </Text>
       </View>
     </View>
@@ -245,6 +236,13 @@ export default function PostDetailScreen() {
         data={comments}
         keyExtractor={(item) => item.id}
         ListHeaderComponent={ListHeader}
+        ListEmptyComponent={
+          commentsLoading ? (
+            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Loading comments…</Text>
+          ) : (
+            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>No comments yet — be the first to reply.</Text>
+          )
+        }
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: bottomInset + 80 }}
         renderItem={({ item }) => (
@@ -306,12 +304,12 @@ export default function PostDetailScreen() {
           />
           <Pressable
             onPress={handleSendReply}
-            disabled={!replyText.trim()}
-            style={[styles.sendBtn, { backgroundColor: replyText.trim() ? colors.primary : colors.muted }]}
+            disabled={!replyText.trim() || createComment.isPending}
+            style={[styles.sendBtn, { backgroundColor: replyText.trim() && !createComment.isPending ? colors.primary : colors.muted }]}
             accessibilityLabel="Send comment"
             accessibilityRole="button"
           >
-            <Feather name="send" size={16} color={replyText.trim() ? '#FFFFFF' : colors.mutedForeground} />
+            <Feather name="send" size={16} color={replyText.trim() && !createComment.isPending ? '#FFFFFF' : colors.mutedForeground} />
           </Pressable>
         </View>
       </View>
@@ -366,6 +364,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1,
   },
   commentsTitle: { fontSize: 16, fontFamily: 'Inter_700Bold' },
+  emptyText: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center', paddingVertical: 24, paddingHorizontal: 16 },
   commentItem: {
     flexDirection: 'row', gap: 10, padding: 14, borderBottomWidth: 1,
   },

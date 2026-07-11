@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/utils/api';
 import { useAuth } from '@/contexts/AuthContext';
-import type { FeedPost, PostCategory } from '@/constants/mockData';
+import type { Comment, FeedPost, PostCategory } from '@/constants/mockData';
 
 // ─── API shapes ──────────────────────────────────────────────────────────────
 
@@ -106,6 +106,76 @@ export function useCreatePost() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: POSTS_QUERY_KEY });
+    },
+  });
+}
+
+// ─── Comments ────────────────────────────────────────────────────────────────
+
+export interface ApiComment {
+  id: string;
+  postId: string;
+  body: string;
+  replyToHandle: string | null;
+  createdAt: string;
+  author: {
+    id: string;
+    name: string;
+    username: string;
+  };
+}
+
+interface CreateCommentInput extends Record<string, unknown> {
+  body: string;
+  replyToHandle?: string;
+}
+
+export function apiCommentToComment(comment: ApiComment): Comment {
+  return {
+    id: comment.id,
+    postId: comment.postId,
+    author: {
+      id: comment.author.id,
+      name: comment.author.name,
+      handle: comment.author.username,
+      verified: false,
+      isOrg: false,
+      initials: getInitials(comment.author.name),
+      avatarColor: colorForId(comment.author.id),
+    },
+    body: comment.body,
+    timeAgo: timeAgo(comment.createdAt),
+    likes: 0,
+    replyTo: comment.replyToHandle ?? undefined,
+  };
+}
+
+export function commentsQueryKey(postId: string) {
+  return ['comments', postId];
+}
+
+export function useComments(postId: string | undefined) {
+  return useQuery({
+    queryKey: commentsQueryKey(postId ?? ''),
+    queryFn: () => apiRequest<{ comments: ApiComment[] }>(`/posts/${postId}/comments`),
+    select: (data) => data.comments.map(apiCommentToComment),
+    enabled: !!postId,
+  });
+}
+
+export function useCreateComment(postId: string | undefined) {
+  const { token } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateCommentInput) =>
+      apiRequest<{ comment: ApiComment }>(`/posts/${postId}/comments`, {
+        method: 'POST',
+        body: input,
+        token,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: commentsQueryKey(postId ?? '') });
     },
   });
 }

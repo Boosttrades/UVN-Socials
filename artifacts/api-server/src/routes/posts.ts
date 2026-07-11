@@ -1,5 +1,12 @@
 import { Router, type IRouter } from "express";
-import { db, postsTable, usersTable, createPostSchema } from "@workspace/db";
+import {
+  db,
+  postsTable,
+  usersTable,
+  commentsTable,
+  createPostSchema,
+  createCommentSchema,
+} from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import { requireAuth } from "../middlewares/auth";
 
@@ -88,6 +95,81 @@ router.delete("/:id", requireAuth, async (req, res) => {
 
   await db.delete(postsTable).where(eq(postsTable.id, id));
   res.json({ message: "Post deleted" });
+});
+
+// ─── GET /api/posts/:postId/comments ─────────────────────────────────────────
+// Public — newest first, matching the client's previous local-state ordering.
+
+router.get("/:postId/comments", async (req, res) => {
+  const postId = String(req.params.postId);
+
+  const [post] = await db.select({ id: postsTable.id }).from(postsTable).where(eq(postsTable.id, postId)).limit(1);
+  if (!post) {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
+
+  const rows = await db
+    .select({
+      id: commentsTable.id,
+      postId: commentsTable.postId,
+      body: commentsTable.body,
+      replyToHandle: commentsTable.replyToHandle,
+      createdAt: commentsTable.createdAt,
+      author: {
+        id: usersTable.id,
+        name: usersTable.name,
+        username: usersTable.username,
+      },
+    })
+    .from(commentsTable)
+    .innerJoin(usersTable, eq(commentsTable.authorId, usersTable.id))
+    .where(eq(commentsTable.postId, postId))
+    .orderBy(desc(commentsTable.createdAt));
+
+  res.json({ comments: rows });
+});
+
+// ─── POST /api/posts/:postId/comments ────────────────────────────────────────
+// Create a comment — requires auth. Author is always the logged-in user.
+
+router.post("/:postId/comments", requireAuth, async (req, res) => {
+  const postId = String(req.params.postId);
+
+  const [post] = await db.select({ id: postsTable.id }).from(postsTable).where(eq(postsTable.id, postId)).limit(1);
+  if (!post) {
+    res.status(404).json({ error: "Post not found" });
+    return;
+  }
+
+  const parsed = createCommentSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid input", details: parsed.error.issues });
+    return;
+  }
+
+  const currentUser = (req as any).currentUser;
+
+  const [comment] = await db
+    .insert(commentsTable)
+    .values({
+      postId,
+      authorId: currentUser.id,
+      body: parsed.data.body,
+      replyToHandle: parsed.data.replyToHandle,
+    })
+    .returning();
+
+  res.status(201).json({
+    comment: {
+      ...comment,
+      author: {
+        id: currentUser.id,
+        name: currentUser.name,
+        username: currentUser.username,
+      },
+    },
+  });
 });
 
 export default router;
