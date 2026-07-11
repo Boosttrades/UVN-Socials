@@ -65,7 +65,7 @@ export default function ActivityScreen() {
       <View
         style={[
           styles.header,
-          { paddingTop: topInset + 10, backgroundColor: colors.background, borderBottomColor: colors.border },
+          { paddingTop: topInset + 10, backgroundColor: colors.background, borderBottomColor: colors.primary },
         ]}
       >
         <View>
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingBottom: 12,
-    borderBottomWidth: 1,
+    borderBottomWidth: 2,
   },
   title: {
     fontSize: 26,

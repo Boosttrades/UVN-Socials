@@ -47,7 +47,7 @@ export default function ForYouScreen() {
           {
             paddingTop: topInset + 8,
             backgroundColor: colors.background,
-            borderBottomColor: colors.border,
+            borderBottomColor: colors.primary,
           },
         ]}
       >
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingBottom: 12,
-    borderBottomWidth: 1,
+    borderBottomWidth: 2,
   },
   logoRow: {
     flexDirection: 'row',

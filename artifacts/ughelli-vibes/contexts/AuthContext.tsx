@@ -10,6 +10,7 @@ export interface AuthUser {
   username: string;
   email: string;
   emailVerified: boolean;
+  profileUpdatedAt: string | null;
   createdAt: string;
 }
 
@@ -28,6 +29,11 @@ interface AuthContextValue {
   resendVerification: (email: string) => Promise<void>;
   forgotPassword: (email: string) => Promise<{ message: string }>;
   resetPassword: (token: string, password: string) => Promise<{ message: string }>;
+  updateProfile: (data: {
+    name?: string;
+    username?: string;
+    password: string;
+  }) => Promise<{ message: string; user: AuthUser }>;
 }
 
 // ─── Context ─────────────────────────────────────────────────────────────────
@@ -108,6 +114,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const updateProfile = useCallback(
+    async (data: { name?: string; username?: string; password: string }) => {
+      if (!token) throw new Error('Not authenticated');
+      const result = await apiRequest<{ message: string; user: AuthUser }>('/auth/profile', {
+        method: 'PATCH',
+        body: data,
+        token,
+      });
+      setUser(result.user);
+      return result;
+    },
+    [token]
+  );
+
   const logout = useCallback(async () => {
     try {
       if (token) {
@@ -133,6 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         resendVerification,
         forgotPassword,
         resetPassword,
+        updateProfile,
       }}
     >
       {children}

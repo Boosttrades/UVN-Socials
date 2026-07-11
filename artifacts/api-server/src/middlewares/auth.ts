@@ -25,6 +25,7 @@ export async function requireAuth(
         username: usersTable.username,
         email: usersTable.email,
         emailVerified: usersTable.emailVerified,
+        profileUpdatedAt: usersTable.profileUpdatedAt,
         createdAt: usersTable.createdAt,
       },
     })

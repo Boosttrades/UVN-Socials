@@ -2,7 +2,13 @@ import { randomBytes } from "crypto";
 import { Router, type IRouter } from "express";
 import { hash, verify as verifyPassword } from "@node-rs/argon2";
 import { db, sessionsTable, usersTable } from "@workspace/db";
-import { forgotPasswordSchema, loginSchema, resetPasswordSchema, signupSchema } from "@workspace/db/schema";
+import {
+  forgotPasswordSchema,
+  loginSchema,
+  resetPasswordSchema,
+  signupSchema,
+  updateProfileSchema,
+} from "@workspace/db/schema";
 import { and, eq, gt } from "drizzle-orm";
 import { sendPasswordResetEmail, sendVerificationEmail } from "../lib/email";
 import { requireAuth } from "../middlewares/auth";
@@ -70,6 +76,15 @@ function computeResetTokenExpiresAt(): Date {
   const d = new Date();
   d.setHours(d.getHours() + 1); // 1-hour reset window
   return d;
+}
+
+const PROFILE_EDIT_COOLDOWN_DAYS = 14;
+
+function msUntilNextProfileEdit(profileUpdatedAt: Date | null): number {
+  if (!profileUpdatedAt) return 0;
+  const nextAllowed = new Date(profileUpdatedAt);
+  nextAllowed.setDate(nextAllowed.getDate() + PROFILE_EDIT_COOLDOWN_DAYS);
+  return nextAllowed.getTime() - Date.now();
 }
 
 const WRONG_CREDENTIALS_MSG = "Wrong email or password";
@@ -200,6 +215,7 @@ router.post("/login", async (req, res) => {
       username: user.username,
       email: user.email,
       emailVerified: user.emailVerified,
+      profileUpdatedAt: user.profileUpdatedAt,
       createdAt: user.createdAt,
     },
   });
@@ -387,6 +403,80 @@ router.post("/logout", requireAuth, async (req, res) => {
 
 router.get("/me", requireAuth, (req, res) => {
   res.json({ user: (req as any).currentUser });
+});
+
+// ─── PATCH /api/auth/profile ─────────────────────────────────────────────────
+// Change name and/or username. Requires the current password, and is rate
+// limited to once every 14 days per account.
+
+router.patch("/profile", requireAuth, async (req, res) => {
+  const parsed = updateProfileSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid input", details: parsed.error.issues });
+    return;
+  }
+
+  const currentUser = (req as any).currentUser;
+  const { name, username, password } = parsed.data;
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, currentUser.id)).limit(1);
+  if (!user) {
+    res.status(404).json({ error: "Account not found" });
+    return;
+  }
+
+  const passwordMatches = await verifyPassword(user.passwordHash, password);
+  if (!passwordMatches) {
+    res.status(401).json({ error: "Incorrect password" });
+    return;
+  }
+
+  const cooldownMs = msUntilNextProfileEdit(user.profileUpdatedAt);
+  if (cooldownMs > 0) {
+    const nextAllowedAt = new Date(Date.now() + cooldownMs);
+    res.status(429).json({
+      error: `You can change your name or username again on ${nextAllowedAt.toLocaleDateString()}.`,
+      code: "PROFILE_EDIT_COOLDOWN",
+      nextAllowedAt: nextAllowedAt.toISOString(),
+    });
+    return;
+  }
+
+  const normalizedUsername = username?.toLowerCase();
+
+  if (normalizedUsername && normalizedUsername !== user.username) {
+    const [existingUsername] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.username, normalizedUsername))
+      .limit(1);
+
+    if (existingUsername) {
+      res.status(409).json({ error: "Username is already taken" });
+      return;
+    }
+  }
+
+  const nowIso = new Date();
+  const [updated] = await db
+    .update(usersTable)
+    .set({
+      ...(name !== undefined ? { name } : {}),
+      ...(normalizedUsername !== undefined ? { username: normalizedUsername } : {}),
+      profileUpdatedAt: nowIso,
+    })
+    .where(eq(usersTable.id, user.id))
+    .returning({
+      id: usersTable.id,
+      name: usersTable.name,
+      username: usersTable.username,
+      email: usersTable.email,
+      emailVerified: usersTable.emailVerified,
+      profileUpdatedAt: usersTable.profileUpdatedAt,
+      createdAt: usersTable.createdAt,
+    });
+
+  res.json({ message: "Profile updated", user: updated });
 });
 
 // ─── HTML helper ─────────────────────────────────────────────────────────────

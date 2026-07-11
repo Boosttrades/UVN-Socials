@@ -13,6 +13,8 @@ export const usersTable = pgTable("users", {
   verificationTokenExpiresAt: timestamp("verification_token_expires_at"),
   resetToken: text("reset_token"),
   resetTokenExpiresAt: timestamp("reset_token_expires_at"),
+  // Last time name/username were changed — enforces a 14-day cooldown between edits.
+  profileUpdatedAt: timestamp("profile_updated_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -40,6 +42,21 @@ export const resetPasswordSchema = z.object({
   token: z.string().min(1),
   password: z.string().min(8).max(128),
 });
+
+export const updateProfileSchema = z
+  .object({
+    name: z.string().min(1).max(100).optional(),
+    username: z
+      .string()
+      .min(3)
+      .max(30)
+      .regex(/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores")
+      .optional(),
+    password: z.string().min(1, "Password is required to change your name or username"),
+  })
+  .refine((data) => data.name !== undefined || data.username !== undefined, {
+    message: "Provide a new name or username to update",
+  });
 
 export const selectUserSchema = createSelectSchema(usersTable).omit({
   passwordHash: true,

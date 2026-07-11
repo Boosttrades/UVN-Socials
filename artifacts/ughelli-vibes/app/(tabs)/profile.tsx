@@ -60,15 +60,18 @@ export default function ProfileScreen() {
         {/* Avatar overlapping cover */}
         <View style={styles.avatarRow}>
           <View style={styles.avatarWrap}>
-            <View style={[styles.avatar, { backgroundColor: colors.secondary, borderColor: colors.background }]}>
+            <View style={[styles.avatar, { backgroundColor: colors.primary, borderColor: colors.background }]}>
               <Text style={styles.avatarText}>{initials}</Text>
             </View>
             <Pressable style={[styles.cameraBtn, { backgroundColor: colors.primary, borderColor: colors.background }]}>
               <Feather name="camera" size={11} color="#FFFFFF" />
             </Pressable>
           </View>
-          <TouchableOpacity style={[styles.editBtn, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-            <Text style={[styles.editBtnText, { color: colors.foreground }]}>Edit Profile</Text>
+          <TouchableOpacity
+            style={[styles.editBtn, { backgroundColor: colors.muted, borderColor: colors.primary }]}
+            onPress={() => router.push('/edit-profile' as any)}
+          >
+            <Text style={[styles.editBtnText, { color: colors.primary }]}>Edit Profile</Text>
           </TouchableOpacity>
         </View>
 
@@ -89,7 +92,7 @@ export default function ProfileScreen() {
               key={s.label}
               style={[styles.stat, i < 2 && { borderRightWidth: 1, borderRightColor: colors.border }]}
             >
-              <Text style={[styles.statVal, { color: colors.foreground }]}>{s.value}</Text>
+              <Text style={[styles.statVal, { color: colors.primary }]}>{s.value}</Text>
               <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
             </Pressable>
           ))}
