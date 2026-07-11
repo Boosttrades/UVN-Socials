@@ -100,17 +100,20 @@ export default function SignupScreen() {
 
         <View style={styles.field}>
           <Text style={styles.label}>Username</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="john_ughelli"
-            placeholderTextColor="#9CA3AF"
-            value={form.username}
-            onChangeText={update('username')}
-            autoCapitalize="none"
-            autoCorrect={false}
-            textContentType="username"
-          />
-          <Text style={styles.hint}>Letters, numbers, and underscores only</Text>
+          <View style={styles.usernameInputRow}>
+            <Text style={styles.usernamePrefix}>@</Text>
+            <TextInput
+              style={[styles.input, styles.usernameInput]}
+              placeholder="john_ughelli"
+              placeholderTextColor="#9CA3AF"
+              value={form.username}
+              onChangeText={(text) => update('username')(text.replace(/^@+/, ''))}
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="username"
+            />
+          </View>
+          <Text style={styles.hint}>Letters, numbers, and underscores only — must be unique</Text>
         </View>
 
         <View style={styles.field}>
@@ -198,6 +201,22 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
   },
   hint: { fontSize: 12, color: '#9CA3AF', marginTop: 4, fontFamily: 'Inter_400Regular' },
+  usernameInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    paddingLeft: 16,
+  },
+  usernamePrefix: { fontSize: 16, color: '#6B7280', fontFamily: 'Inter_500Medium' },
+  usernameInput: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    paddingLeft: 4,
+  },
 
   button: {
     backgroundColor: PRIMARY,
