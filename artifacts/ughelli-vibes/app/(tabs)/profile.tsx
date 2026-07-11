@@ -13,6 +13,8 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
+import { useFeed } from '@/hooks/usePosts';
+import FeedCard from '@/components/FeedCard';
 
 type ProfileTab = 'Updates' | 'Saved';
 
@@ -27,6 +29,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user } = useAuth();
+  const { data: posts = [] } = useFeed();
   const [activeTab, setActiveTab] = useState<ProfileTab>('Updates');
 
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
@@ -35,6 +38,8 @@ export default function ProfileScreen() {
   const initials = user ? getInitials(user.name) : '?';
   const displayName = user?.name ?? '';
   const handle = `@${user?.username ?? ''}`;
+  const myPosts = user ? posts.filter((p) => p.author.id === user.id) : [];
+  const listData = activeTab === 'Updates' ? myPosts : [];
 
   const ListHeader = (
     <View>
@@ -73,10 +78,10 @@ export default function ProfileScreen() {
         </View>
         <Text style={[styles.handle, { color: colors.mutedForeground }]}>{handle}</Text>
 
-        {/* Stats — real zeros since no posts yet */}
+        {/* Stats — Updates reflects real posts; followers/following have no backend yet */}
         <View style={[styles.statsRow, { borderColor: colors.border }]}>
           {[
-            { label: 'Updates', value: '0' },
+            { label: 'Updates', value: String(myPosts.length) },
             { label: 'Followers', value: '0' },
             { label: 'Following', value: '0' },
           ].map((s, i) => (
@@ -128,9 +133,9 @@ export default function ProfileScreen() {
   return (
     <FlatList
       style={[styles.root, { backgroundColor: colors.background }]}
-      data={[]}
-      keyExtractor={(item: never) => item}
-      renderItem={() => null}
+      data={listData}
+      keyExtractor={(item) => item.id}
+      renderItem={({ item }) => <FeedCard post={item} />}
       ListHeaderComponent={ListHeader}
       contentContainerStyle={{ paddingBottom: bottomPad }}
       showsVerticalScrollIndicator={false}

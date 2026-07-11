@@ -10,7 +10,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
-import { MOCK_NOTIFICATIONS, type Notification } from '@/constants/mockData';
+import type { Notification } from '@/constants/mockData';
 
 type FilterTab = 'All' | 'Reactions' | 'Follows' | 'Mentions' | 'System';
 const TABS: FilterTab[] = ['All', 'Reactions', 'Follows', 'Mentions', 'System'];
@@ -37,7 +37,7 @@ export default function ActivityScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<FilterTab>('All');
-  const [notifications, setNotifications] = useState<typeof MOCK_NOTIFICATIONS>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomPad = Platform.OS === 'web' ? 84 : insets.bottom + 60;

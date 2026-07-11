@@ -4,13 +4,15 @@ A local news network mobile app for Ughelli, Nigeria — inspired by X's interac
 
 ## Run & Operate
 
-- **`Ughelli Vibes (web)`** workflow — Expo Metro dev server, web preview at port 8000
-- **`API Server`** workflow — Express 5 API server at port 8080
+- **`artifacts/ughelli-vibes: expo`** workflow — Expo Metro dev server, web preview at port 8000
+- **`artifacts/api-server: API Server`** workflow — Express 5 API server at port 8080
 
 - `pnpm install` — install all dependencies
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
-- Required env: `SESSION_SECRET` — session signing secret
+- `pnpm --filter @workspace/db run push` — push schema changes to the database
+- Required secrets: `SESSION_SECRET` (session signing), `RESEND_API_KEY` (verification email)
+- Known limitation: Resend is in test mode — it can only deliver to the account owner's own email until a sending domain is verified at resend.com/domains
 
 ## Stack
 
@@ -25,18 +27,27 @@ A local news network mobile app for Ughelli, Nigeria — inspired by X's interac
 - `artifacts/ughelli-vibes/` — Expo mobile app
   - `app/(tabs)/` — 5 tabs: Home, Discover, Create, Activity, Profile
   - `app/post/[id].tsx` — post detail screen
+  - `app/auth/` — login/signup screens
   - `app/settings.tsx` — settings screen
-  - `constants/mockData.ts` — all mock data (no backend in v1)
+  - `contexts/AuthContext.tsx` — session state (token + user), backed by real `/api/auth` endpoints
+  - `hooks/usePosts.ts` — TanStack Query hooks for the real `/api/posts` endpoints (feed + create)
+  - `constants/mockData.ts` — only static UI config left (category colors, discover category tiles) + shared types; no fake posts/orgs/notifications
   - `constants/colors.ts` — brand color tokens
   - `components/` — shared components (FeedCard, EmergencyBanner, SearchBar, etc.)
 - `artifacts/api-server/` — Express 5 API server
-  - `src/routes/` — API route handlers
+  - `src/routes/auth.ts` — signup/login/verify/logout/me/resend-verification
+  - `src/routes/posts.ts` — create/list/delete real posts
+  - `src/middlewares/auth.ts` — `requireAuth` session middleware
+- `lib/db/src/schema/` — Drizzle schema: `users`, `sessions`, `posts`
 - `lib/` — shared library packages (api-spec, api-zod, api-client-react, db)
+- `README.md` (in `artifacts/ughelli-vibes/`) — up-to-date snapshot of what's built vs. pending; update it at every checkpoint
 
 ## Architecture decisions
 
-- No backend in v1 — all data is mock in `constants/mockData.ts`
-- No AsyncStorage yet — all state in `useState`
+- Real backend: Postgres via Drizzle (`users`, `sessions`, `posts`), Express API, Argon2id password hashing, Resend for verification email
+- Auth: Bearer session tokens in AsyncStorage (30-day expiry); `AuthContext` + `AuthGate` in `app/_layout.tsx` redirect based on session state
+- Posts: `POST /api/posts` (auth required) creates, `GET /api/posts` lists newest-first (public read), `DELETE /api/posts/:id` (author-only). Feed/Discover/Profile all read through `hooks/usePosts.ts` (TanStack Query) — no more mock feed data
+- Comments have no backend yet — replies on the post detail screen are session-local only (lost on reload)
 - `useSafeAreaInsets()` for all top/bottom padding; web gets 67px top / 84px bottom tab fallback
 - `Share` from react-native (built-in) for native share sheet — no expo-sharing needed
 

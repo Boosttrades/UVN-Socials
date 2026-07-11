@@ -18,21 +18,32 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useColors } from '@/hooks/useColors';
-import { CATEGORY_COLORS, MOCK_COMMENTS, MOCK_FEED, type Comment } from '@/constants/mockData';
+import { CATEGORY_COLORS, type Comment } from '@/constants/mockData';
+import { useAuth } from '@/contexts/AuthContext';
+import { useFeed } from '@/hooks/usePosts';
 
 function formatCount(n: number) {
   if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
   return n.toString();
 }
 
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+const postComments: Comment[] = [];
+
 export default function PostDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { user } = useAuth();
+  const { data: posts = [] } = useFeed();
 
-  const post = MOCK_FEED.find((p) => p.id === id);
-  const postComments = MOCK_COMMENTS.filter((c) => c.postId === id);
+  const post = posts.find((p) => p.id === id);
 
   const [liked, setLiked] = useState(false);
   const [bookmarked, setBookmarked] = useState(post?.isBookmarked ?? false);
@@ -80,12 +91,20 @@ export default function PostDetailScreen() {
   }
 
   function handleSendReply() {
-    if (!replyText.trim()) return;
+    if (!replyText.trim() || !user) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const newComment: Comment = {
       id: `c-new-${Date.now()}`,
       postId: safePost.id,
-      author: { id: 'me', name: 'You', handle: 'john.oghenerukewe', verified: false, isOrg: false, initials: 'JO', avatarColor: '#066A46' },
+      author: {
+        id: user.id,
+        name: user.name,
+        handle: user.username,
+        verified: false,
+        isOrg: false,
+        initials: getInitials(user.name),
+        avatarColor: '#066A46',
+      },
       body: replyText.trim(),
       timeAgo: 'Just now',
       likes: 0,
@@ -274,7 +293,7 @@ export default function PostDetailScreen() {
         )}
         <View style={styles.replyRow}>
           <View style={[styles.myAvatar, { backgroundColor: '#066A46' }]}>
-            <Text style={styles.myAvatarText}>JO</Text>
+            <Text style={styles.myAvatarText}>{user ? getInitials(user.name) : '?'}</Text>
           </View>
           <TextInput
             value={replyText}
