@@ -35,7 +35,7 @@ A local news network mobile app for Ughelli, Nigeria — inspired by X's interac
   - `constants/colors.ts` — brand color tokens
   - `components/` — shared components (FeedCard, EmergencyBanner, SearchBar, etc.)
 - `artifacts/api-server/` — Express 5 API server
-  - `src/routes/auth.ts` — signup/login/verify/logout/me/resend-verification
+  - `src/routes/auth.ts` — signup/login/verify/logout/me/resend-verification/forgot-password/reset-password
   - `src/routes/posts.ts` — create/list/delete real posts
   - `src/middlewares/auth.ts` — `requireAuth` session middleware
 - `lib/db/src/schema/` — Drizzle schema: `users`, `sessions`, `posts`
@@ -48,6 +48,7 @@ A local news network mobile app for Ughelli, Nigeria — inspired by X's interac
 - Auth: Bearer session tokens in AsyncStorage (30-day expiry); `AuthContext` + `AuthGate` in `app/_layout.tsx` redirect based on session state
 - Posts: `POST /api/posts` (auth required) creates, `GET /api/posts` lists newest-first (public read), `DELETE /api/posts/:id` (author-only). Feed/Discover/Profile all read through `hooks/usePosts.ts` (TanStack Query) — no more mock feed data
 - Comments have no backend yet — replies on the post detail screen are session-local only (lost on reload)
+- Password reset: `app/auth/forgot-password.tsx` → email with link to `app/auth/reset-password.tsx?token=...` → `POST /api/auth/reset-password`. Reset tokens expire in 1 hour and resetting invalidates all existing sessions for that user.
 - `useSafeAreaInsets()` for all top/bottom padding; web gets 67px top / 84px bottom tab fallback
 - `Share` from react-native (built-in) for native share sheet — no expo-sharing needed
 

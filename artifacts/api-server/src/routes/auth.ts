@@ -2,9 +2,9 @@ import { randomBytes } from "crypto";
 import { Router, type IRouter } from "express";
 import { hash, verify as verifyPassword } from "@node-rs/argon2";
 import { db, sessionsTable, usersTable } from "@workspace/db";
-import { loginSchema, signupSchema } from "@workspace/db/schema";
+import { forgotPasswordSchema, loginSchema, resetPasswordSchema, signupSchema } from "@workspace/db/schema";
 import { and, eq, gt } from "drizzle-orm";
-import { sendVerificationEmail } from "../lib/email";
+import { sendPasswordResetEmail, sendVerificationEmail } from "../lib/email";
 import { requireAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -52,6 +52,24 @@ function getAppBaseUrl(req: any): string {
   const proto = req.headers["x-forwarded-proto"] || "https";
   const host = req.headers["x-forwarded-host"] || req.headers["host"];
   return `${proto}://${host}`;
+}
+
+/**
+ * Base URL of the mobile app's web build (not the API server) — used for
+ * links that must open an interactive in-app screen, like password reset.
+ */
+function getWebAppBaseUrl(): string {
+  const domain = process.env.REPLIT_DEV_DOMAIN;
+  if (domain) {
+    return `https://${domain}`;
+  }
+  return "http://localhost:8000";
+}
+
+function computeResetTokenExpiresAt(): Date {
+  const d = new Date();
+  d.setHours(d.getHours() + 1); // 1-hour reset window
+  return d;
 }
 
 const WRONG_CREDENTIALS_MSG = "Wrong email or password";
@@ -274,6 +292,87 @@ router.post("/resend-verification", async (req, res) => {
   await sendVerificationEmail({ to: user.email, name: user.name, verificationUrl });
 
   res.json({ message: "If that account exists and is unverified, a new link has been sent." });
+});
+
+// ─── POST /api/auth/forgot-password ─────────────────────────────────────────
+
+router.post("/forgot-password", async (req, res) => {
+  const parsed = forgotPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "A valid email is required" });
+    return;
+  }
+
+  const { email } = parsed.data;
+
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.email, email.toLowerCase()))
+    .limit(1);
+
+  // Always return success — don't reveal whether the email exists
+  const genericMessage = "If that account exists, a password reset link has been sent.";
+  if (!user) {
+    res.json({ message: genericMessage });
+    return;
+  }
+
+  const resetToken = generateToken();
+  const resetTokenExpiresAt = computeResetTokenExpiresAt();
+
+  await db
+    .update(usersTable)
+    .set({ resetToken, resetTokenExpiresAt })
+    .where(eq(usersTable.id, user.id));
+
+  const resetUrl = `${getWebAppBaseUrl()}/auth/reset-password?token=${resetToken}`;
+  try {
+    await sendPasswordResetEmail({ to: user.email, name: user.name, resetUrl });
+  } catch (err) {
+    // Don't leak email-delivery failures to the client — same reasoning as
+    // not revealing whether the account exists. Log so it's visible to devs
+    // (e.g. Resend test-mode restrictions before a sending domain is verified).
+    req.log?.error?.({ err }, "Failed to send password reset email");
+  }
+
+  res.json({ message: genericMessage });
+});
+
+// ─── POST /api/auth/reset-password ──────────────────────────────────────────
+
+router.post("/reset-password", async (req, res) => {
+  const parsed = resetPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid input", details: parsed.error.issues });
+    return;
+  }
+
+  const { token, password } = parsed.data;
+  const now = new Date();
+
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(and(eq(usersTable.resetToken, token), gt(usersTable.resetTokenExpiresAt, now)))
+    .limit(1);
+
+  if (!user) {
+    res.status(400).json({ error: "This reset link has expired or is invalid. Please request a new one." });
+    return;
+  }
+
+  const passwordHash = await hash(password, ARGON2_OPTIONS);
+
+  await db
+    .update(usersTable)
+    .set({ passwordHash, resetToken: null, resetTokenExpiresAt: null })
+    .where(eq(usersTable.id, user.id));
+
+  // Invalidate all existing sessions so a stolen/old session can't survive a reset
+  await db.delete(sessionsTable).where(eq(sessionsTable.userId, user.id));
+
+  res.json({ message: "Your password has been reset. You can now log in." });
 });
 
 // ─── POST /api/auth/logout ───────────────────────────────────────────────────

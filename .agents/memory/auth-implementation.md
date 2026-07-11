@@ -40,6 +40,14 @@ description: How auth (signup/login/session/email-verify) is built in Ughelli Vi
 
 - Sessions: 30 days
 - Verification tokens: 24 hours
+- Password reset tokens: 1 hour; resetting a password deletes all of that user's sessions
+
+## Password reset
+
+- `POST /api/auth/forgot-password` (email) → generates `resetToken`/`resetTokenExpiresAt` on `usersTable`, emails a link to the **web app's own domain** (`REPLIT_DEV_DOMAIN`, not the API server's), e.g. `/auth/reset-password?token=...`
+- `POST /api/auth/reset-password` (token, password) → validates token+expiry, rehashes, clears token, deletes all sessions for that user
+- Both forgot/reset screens live in `app/auth/` like other auth screens (`Stack` auto-registers them, no layout changes needed)
+- Email-send failures in `forgot-password` are caught and logged, never surfaced to the client — same email-enumeration-safety reasoning as not revealing whether the account exists. Signup's verification email send is NOT wrapped this way (pre-existing gap) — worth matching this pattern there too if touched again.
 
 ## API base URL (Expo)
 
