@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Image,
   Platform,
@@ -13,7 +13,9 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
+import { useAuth } from '@/contexts/AuthContext';
 import { CATEGORY_COLORS, type FeedPost } from '@/constants/mockData';
+import { useBookmarkPost, useLikePost, useSharePost } from '@/hooks/usePosts';
 
 interface FeedCardProps {
   post: FeedPost;
@@ -28,26 +30,34 @@ function formatCount(n: number): string {
 export default function FeedCard({ post, onPress }: FeedCardProps) {
   const colors = useColors();
   const router = useRouter();
-  const [liked, setLiked] = useState(false);
-  const [bookmarked, setBookmarked] = useState(post.isBookmarked);
-  const [likeCount, setLikeCount] = useState(post.likes);
+  const { token } = useAuth();
+  const likePost = useLikePost();
+  const bookmarkPost = useBookmarkPost();
+  const sharePost = useSharePost();
+
+  const liked = post.isLiked;
+  const bookmarked = post.isBookmarked;
+  const likeCount = post.likes;
 
   const catColors = CATEGORY_COLORS[post.category];
   const isEmergency = post.isEmergency;
 
   function handleLike() {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (liked) {
-      setLikeCount((c) => c - 1);
-    } else {
-      setLikeCount((c) => c + 1);
+    if (!token) {
+      router.push('/auth/login' as any);
+      return;
     }
-    setLiked((v) => !v);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    likePost.mutate(post.id);
   }
 
   function handleBookmark() {
+    if (!token) {
+      router.push('/auth/login' as any);
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setBookmarked((v) => !v);
+    bookmarkPost.mutate(post.id);
   }
 
   function handleCardPress() {
@@ -60,6 +70,7 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
   }
 
   async function handleShare() {
+    sharePost.mutate(post.id);
     try {
       await Share.share({
         message: `${post.headline}\n\nShared via Ughelli Vibes TV`,

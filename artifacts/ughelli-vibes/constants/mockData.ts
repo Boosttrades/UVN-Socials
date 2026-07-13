@@ -32,6 +32,7 @@ export interface FeedPost {
   likes: number;
   comments: number;
   shares: number;
+  isLiked: boolean;
   isBookmarked: boolean;
   isSponsored: boolean;
   isBreaking: boolean;

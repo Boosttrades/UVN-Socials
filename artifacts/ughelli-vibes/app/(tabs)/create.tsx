@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -14,10 +15,12 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import { useColors } from '@/hooks/useColors';
+import { useAuth } from '@/contexts/AuthContext';
 import { ALL_CATEGORIES, type PostCategory } from '@/constants/mockData';
 import { useCreatePost } from '@/hooks/usePosts';
-import { ApiError } from '@/utils/api';
+import { apiRequest, ApiError, getApiBase } from '@/utils/api';
 
 interface PostType {
   id: string;
@@ -41,6 +44,7 @@ export default function CreateScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { token } = useAuth();
   const createPost = useCreatePost();
   const [selectedType, setSelectedType] = useState<PostType | null>(null);
   const [title, setTitle] = useState('');
@@ -48,6 +52,8 @@ export default function CreateScreen() {
   const [category, setCategory] = useState<PostCategory | null>(null);
   const [published, setPublished] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
 
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomPad = Platform.OS === 'web' ? 84 : insets.bottom + 60;
@@ -60,6 +66,67 @@ export default function CreateScreen() {
     setCategory(null);
     setPublished(false);
     setErrorMessage(null);
+    setImageUri(null);
+  }
+
+  async function handlePickImage() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setErrorMessage('Photo library access is needed to attach a photo.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+      allowsEditing: true,
+      aspect: [16, 9],
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setErrorMessage(null);
+      setImageUri(result.assets[0].uri);
+    }
+  }
+
+  /**
+   * Uploads the picked image directly to the presigned object storage URL and
+   * returns the server-relative path (`/api/storage/objects/...`) to store on
+   * the post. Returns undefined if there is no image to upload.
+   */
+  async function uploadSelectedImage(): Promise<string | undefined> {
+    if (!imageUri) return undefined;
+
+    setIsUploadingImage(true);
+    try {
+      const fileResponse = await fetch(imageUri);
+      const blob = await fileResponse.blob();
+      const contentType = blob.type || 'image/jpeg';
+
+      const { uploadURL, objectPath } = await apiRequest<{
+        uploadURL: string;
+        objectPath: string;
+      }>('/storage/uploads/request-url', {
+        method: 'POST',
+        token,
+        body: { name: `post-image-${Date.now()}`, size: blob.size, contentType },
+      });
+
+      const putResponse = await fetch(uploadURL, {
+        method: 'PUT',
+        headers: { 'Content-Type': contentType },
+        body: blob,
+      });
+      if (!putResponse.ok) {
+        throw new Error('Upload failed');
+      }
+
+      // objectPath is like "/objects/uploads/<id>" — serve it from our own
+      // API so the mobile client never talks to the bucket directly.
+      return `${getApiBase()}/storage${objectPath}`;
+    } finally {
+      setIsUploadingImage(false);
+    }
   }
 
   async function handlePublish() {
@@ -67,11 +134,13 @@ export default function CreateScreen() {
     setErrorMessage(null);
 
     try {
+      const imageUrl = await uploadSelectedImage();
       await createPost.mutateAsync({
         type: selectedType.id,
         category: category ?? undefined,
         headline: title.trim(),
         body: body.trim() || undefined,
+        imageUrl,
         isEmergency: selectedType.id === 'incident',
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -82,6 +151,7 @@ export default function CreateScreen() {
         setBody('');
         setCategory(null);
         setPublished(false);
+        setImageUri(null);
         router.push('/(tabs)');
       }, 1600);
     } catch (err) {
@@ -92,7 +162,7 @@ export default function CreateScreen() {
     }
   }
 
-  const canPublish = title.trim().length > 0 && !createPost.isPending;
+  const canPublish = title.trim().length > 0 && !createPost.isPending && !isUploadingImage;
 
   return (
     <KeyboardAvoidingView
@@ -198,13 +268,29 @@ export default function CreateScreen() {
                 />
               </View>
 
-              {/* Attach photo placeholder */}
-              <View style={[styles.attachRow, { borderColor: colors.border, backgroundColor: colors.muted }]}>
-                <Feather name="image" size={18} color={colors.mutedForeground} />
-                <Text style={[styles.attachText, { color: colors.mutedForeground }]}>
-                  Add photo — coming in next release
-                </Text>
-              </View>
+              {/* Attach photo */}
+              {imageUri ? (
+                <View style={styles.imagePreviewWrap}>
+                  <Image source={{ uri: imageUri }} style={styles.imagePreview} resizeMode="cover" />
+                  <Pressable
+                    style={[styles.removeImageBtn, { backgroundColor: 'rgba(0,0,0,0.55)' }]}
+                    onPress={() => setImageUri(null)}
+                    hitSlop={8}
+                  >
+                    <Feather name="x" size={14} color="#FFFFFF" />
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  style={[styles.attachRow, { borderColor: colors.border, backgroundColor: colors.muted }]}
+                  onPress={handlePickImage}
+                >
+                  <Feather name="image" size={18} color={colors.mutedForeground} />
+                  <Text style={[styles.attachText, { color: colors.mutedForeground }]}>
+                    Add a photo
+                  </Text>
+                </Pressable>
+              )}
 
               {/* Category */}
               <View style={styles.field}>
@@ -256,7 +342,7 @@ export default function CreateScreen() {
               >
                 <Feather name="send" size={17} color={canPublish ? '#FFFFFF' : colors.mutedForeground} />
                 <Text style={[styles.publishText, { color: canPublish ? '#FFFFFF' : colors.mutedForeground }]}>
-                  {createPost.isPending ? 'Publishing…' : 'Publish to Ughelli Vibes'}
+                  {isUploadingImage ? 'Uploading photo…' : createPost.isPending ? 'Publishing…' : 'Publish to Ughelli Vibes'}
                 </Text>
               </TouchableOpacity>
             </>
@@ -374,6 +460,26 @@ const styles = StyleSheet.create({
   attachText: {
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
+  },
+  imagePreviewWrap: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 20,
+    position: 'relative',
+  },
+  imagePreview: {
+    width: '100%',
+    height: 180,
+  },
+  removeImageBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   catChip: {
     paddingHorizontal: 14,

@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { boolean, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { usersTable } from "./users";
 
@@ -30,7 +30,9 @@ export const postsTable = pgTable("posts", {
   category: text("category", { enum: POST_CATEGORIES }),
   headline: text("headline").notNull(),
   body: text("body"),
+  imageUrl: text("image_url"),
   isEmergency: boolean("is_emergency").notNull().default(false),
+  sharesCount: integer("shares_count").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -46,6 +48,7 @@ export const createPostSchema = z.object({
   category: z.enum(POST_CATEGORIES).optional(),
   headline: z.string().trim().min(1, "Headline is required").max(200),
   body: z.string().trim().max(1000).optional(),
+  imageUrl: z.string().trim().min(1).max(500).optional(),
   isEmergency: z.boolean().optional(),
 });
 

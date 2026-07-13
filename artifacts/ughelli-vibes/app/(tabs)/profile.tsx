@@ -13,7 +13,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
-import { useFeed } from '@/hooks/usePosts';
+import { useFeed, useUserProfile } from '@/hooks/usePosts';
 import FeedCard from '@/components/FeedCard';
 
 type ProfileTab = 'Updates' | 'Saved';
@@ -30,6 +30,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { data: posts = [] } = useFeed();
+  const { data: profile } = useUserProfile(user?.username);
   const [activeTab, setActiveTab] = useState<ProfileTab>('Updates');
 
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
@@ -39,7 +40,8 @@ export default function ProfileScreen() {
   const displayName = user?.name ?? '';
   const handle = `@${user?.username ?? ''}`;
   const myPosts = user ? posts.filter((p) => p.author.id === user.id) : [];
-  const listData = activeTab === 'Updates' ? myPosts : [];
+  const savedPosts = posts.filter((p) => p.isBookmarked);
+  const listData = activeTab === 'Updates' ? myPosts : savedPosts;
 
   const ListHeader = (
     <View>
@@ -81,12 +83,12 @@ export default function ProfileScreen() {
         </View>
         <Text style={[styles.handle, { color: colors.mutedForeground }]}>{handle}</Text>
 
-        {/* Stats — Updates reflects real posts; followers/following have no backend yet */}
+        {/* Stats */}
         <View style={[styles.statsRow, { borderColor: colors.border }]}>
           {[
-            { label: 'Updates', value: String(myPosts.length) },
-            { label: 'Followers', value: '0' },
-            { label: 'Following', value: '0' },
+            { label: 'Updates', value: String(profile?.postsCount ?? myPosts.length) },
+            { label: 'Followers', value: String(profile?.followersCount ?? 0) },
+            { label: 'Following', value: String(profile?.followingCount ?? 0) },
           ].map((s, i) => (
             <Pressable
               key={s.label}

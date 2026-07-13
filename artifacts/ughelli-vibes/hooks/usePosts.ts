@@ -11,7 +11,13 @@ export interface ApiPost {
   category: PostCategory | null;
   headline: string;
   body: string | null;
+  imageUrl: string | null;
   isEmergency: boolean;
+  sharesCount: number;
+  likesCount: number;
+  commentsCount: number;
+  isLiked: boolean;
+  isBookmarked: boolean;
   createdAt: string;
   author: {
     id: string;
@@ -25,6 +31,7 @@ interface CreatePostInput extends Record<string, unknown> {
   category?: PostCategory;
   headline: string;
   body?: string;
+  imageUrl?: string;
   isEmergency?: boolean;
 }
 
@@ -70,11 +77,13 @@ export function apiPostToFeedPost(post: ApiPost): FeedPost {
     },
     headline: post.headline,
     body: post.body ?? undefined,
+    imageSource: post.imageUrl ? { uri: post.imageUrl } : undefined,
     timeAgo: timeAgo(post.createdAt),
-    likes: 0,
-    comments: 0,
-    shares: 0,
-    isBookmarked: false,
+    likes: post.likesCount,
+    comments: post.commentsCount,
+    shares: post.sharesCount,
+    isLiked: post.isLiked,
+    isBookmarked: post.isBookmarked,
     isSponsored: false,
     isBreaking: false,
     isEmergency: post.isEmergency,
@@ -86,9 +95,10 @@ export function apiPostToFeedPost(post: ApiPost): FeedPost {
 export const POSTS_QUERY_KEY = ['posts'];
 
 export function useFeed() {
+  const { token } = useAuth();
   return useQuery({
-    queryKey: POSTS_QUERY_KEY,
-    queryFn: () => apiRequest<{ posts: ApiPost[] }>('/posts'),
+    queryKey: [...POSTS_QUERY_KEY, token ?? null],
+    queryFn: () => apiRequest<{ posts: ApiPost[] }>('/posts', { token }),
     select: (data) => data.posts.map(apiPostToFeedPost),
   });
 }
@@ -106,6 +116,101 @@ export function useCreatePost() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: POSTS_QUERY_KEY });
+    },
+  });
+}
+
+// ─── Likes / bookmarks / shares ──────────────────────────────────────────────
+
+function patchPostInCache(
+  queryClient: ReturnType<typeof useQueryClient>,
+  postId: string,
+  patch: Partial<ApiPost>
+) {
+  queryClient.setQueriesData<{ posts: ApiPost[] } | undefined>(
+    { queryKey: POSTS_QUERY_KEY },
+    (data) => {
+      if (!data) return data;
+      return {
+        posts: data.posts.map((p) => (p.id === postId ? { ...p, ...patch } : p)),
+      };
+    }
+  );
+}
+
+export function useLikePost() {
+  const { token } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (postId: string) =>
+      apiRequest<{ liked: boolean; likesCount: number }>(`/posts/${postId}/like`, {
+        method: 'POST',
+        token,
+      }),
+    onMutate: async (postId: string) => {
+      // Optimistic toggle so the UI feels instant.
+      queryClient.setQueriesData<{ posts: ApiPost[] } | undefined>(
+        { queryKey: POSTS_QUERY_KEY },
+        (data) => {
+          if (!data) return data;
+          return {
+            posts: data.posts.map((p) =>
+              p.id === postId
+                ? { ...p, isLiked: !p.isLiked, likesCount: p.likesCount + (p.isLiked ? -1 : 1) }
+                : p
+            ),
+          };
+        }
+      );
+    },
+    onSuccess: (result, postId) => {
+      patchPostInCache(queryClient, postId, { isLiked: result.liked, likesCount: result.likesCount });
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: POSTS_QUERY_KEY });
+    },
+  });
+}
+
+export function useBookmarkPost() {
+  const { token } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (postId: string) =>
+      apiRequest<{ bookmarked: boolean }>(`/posts/${postId}/bookmark`, {
+        method: 'POST',
+        token,
+      }),
+    onMutate: async (postId: string) => {
+      queryClient.setQueriesData<{ posts: ApiPost[] } | undefined>(
+        { queryKey: POSTS_QUERY_KEY },
+        (data) => {
+          if (!data) return data;
+          return {
+            posts: data.posts.map((p) => (p.id === postId ? { ...p, isBookmarked: !p.isBookmarked } : p)),
+          };
+        }
+      );
+    },
+    onSuccess: (result, postId) => {
+      patchPostInCache(queryClient, postId, { isBookmarked: result.bookmarked });
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: POSTS_QUERY_KEY });
+    },
+  });
+}
+
+export function useSharePost() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (postId: string) =>
+      apiRequest<{ sharesCount: number }>(`/posts/${postId}/share`, { method: 'POST' }),
+    onSuccess: (result, postId) => {
+      patchPostInCache(queryClient, postId, { sharesCount: result.sharesCount });
     },
   });
 }
@@ -176,6 +281,44 @@ export function useCreateComment(postId: string | undefined) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: commentsQueryKey(postId ?? '') });
+    },
+  });
+}
+
+// ─── Follow ──────────────────────────────────────────────────────────────────
+
+export interface ApiUserProfile {
+  id: string;
+  name: string;
+  username: string;
+  followersCount: number;
+  followingCount: number;
+  postsCount: number;
+  isFollowing: boolean;
+}
+
+export function useUserProfile(username: string | undefined) {
+  const { token } = useAuth();
+  return useQuery({
+    queryKey: ['userProfile', username],
+    queryFn: () => apiRequest<{ user: ApiUserProfile }>(`/users/${username}`, { token }),
+    select: (data) => data.user,
+    enabled: !!username,
+  });
+}
+
+export function useFollowUser(username: string | undefined) {
+  const { token } = useAuth();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiRequest<{ following: boolean; followersCount: number }>(`/users/${username}/follow`, {
+        method: 'POST',
+        token,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['userProfile', username] });
     },
   });
 }

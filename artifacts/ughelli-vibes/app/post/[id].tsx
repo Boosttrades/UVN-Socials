@@ -20,7 +20,16 @@ import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useColors } from '@/hooks/useColors';
 import { CATEGORY_COLORS } from '@/constants/mockData';
 import { useAuth } from '@/contexts/AuthContext';
-import { useComments, useCreateComment, useFeed } from '@/hooks/usePosts';
+import {
+  useBookmarkPost,
+  useComments,
+  useCreateComment,
+  useFeed,
+  useFollowUser,
+  useLikePost,
+  useSharePost,
+  useUserProfile,
+} from '@/hooks/usePosts';
 
 function formatCount(n: number) {
   if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
@@ -38,19 +47,26 @@ export default function PostDetailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { data: posts = [] } = useFeed();
 
   const post = posts.find((p) => p.id === id);
 
-  const [liked, setLiked] = useState(false);
-  const [bookmarked, setBookmarked] = useState(post?.isBookmarked ?? false);
-  const [likeCount, setLikeCount] = useState(post?.likes ?? 0);
   const [replyText, setReplyText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
 
   const { data: comments = [], isLoading: commentsLoading } = useComments(id);
   const createComment = useCreateComment(id);
+  const likePost = useLikePost();
+  const bookmarkPost = useBookmarkPost();
+  const sharePost = useSharePost();
+  const { data: authorProfile } = useUserProfile(post?.author.handle);
+  const followUser = useFollowUser(post?.author.handle);
+
+  const liked = post?.isLiked ?? false;
+  const bookmarked = post?.isBookmarked ?? false;
+  const likeCount = post?.likes ?? 0;
+  const isOwnPost = !!user && post?.author.id === user.id;
 
   if (!post) {
     return (
@@ -71,17 +87,34 @@ export default function PostDetailScreen() {
   const bottomInset = Platform.OS === 'web' ? 0 : insets.bottom;
 
   function handleLike() {
+    if (!token) {
+      router.push('/auth/login' as any);
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setLiked((v) => !v);
-    setLikeCount((c) => (liked ? c - 1 : c + 1));
+    likePost.mutate(safePost.id);
   }
 
   function handleBookmark() {
+    if (!token) {
+      router.push('/auth/login' as any);
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setBookmarked((v) => !v);
+    bookmarkPost.mutate(safePost.id);
+  }
+
+  function handleFollow() {
+    if (!token) {
+      router.push('/auth/login' as any);
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    followUser.mutate();
   }
 
   async function handleShare() {
+    sharePost.mutate(safePost.id);
     try {
       await Share.share({
         message: `${safePost.headline}\n\nShared via Ughelli Vibes TV`,
@@ -133,9 +166,29 @@ export default function PostDetailScreen() {
             </View>
             <Text style={[styles.handle, { color: colors.mutedForeground }]}>@{safePost.author.handle} · {safePost.timeAgo}</Text>
           </View>
-          <TouchableOpacity style={[styles.followBtn, { backgroundColor: colors.primary }]}>
-            <Text style={styles.followBtnText}>Follow</Text>
-          </TouchableOpacity>
+          {!isOwnPost && (
+            <TouchableOpacity
+              style={[
+                styles.followBtn,
+                {
+                  backgroundColor: authorProfile?.isFollowing ? colors.muted : colors.primary,
+                  borderWidth: authorProfile?.isFollowing ? 1 : 0,
+                  borderColor: colors.border,
+                },
+              ]}
+              onPress={handleFollow}
+              disabled={followUser.isPending}
+            >
+              <Text
+                style={[
+                  styles.followBtnText,
+                  { color: authorProfile?.isFollowing ? colors.foreground : '#FFFFFF' },
+                ]}
+              >
+                {authorProfile?.isFollowing ? 'Following' : 'Follow'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Full headline */}
