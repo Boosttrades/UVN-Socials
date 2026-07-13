@@ -11,8 +11,9 @@ A local news network mobile app for Ughelli, Nigeria — inspired by X's interac
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/db run push` — push schema changes to the database
-- Required secrets: `SESSION_SECRET` (session signing), `RESEND_API_KEY` (verification email)
-- Known limitation: Resend is in test mode — it can only deliver to the account owner's own email until a sending domain is verified at resend.com/domains
+- Required secrets: `SESSION_SECRET` (session signing), `RESEND_API_KEY` (verification email) — both configured
+- Object storage (App Storage) bucket is provisioned (`DEFAULT_OBJECT_STORAGE_BUCKET_ID`, `PUBLIC_OBJECT_SEARCH_PATHS`, `PRIVATE_OBJECT_DIR` are set), but no upload routes/UI are wired yet — see follow-up tasks for photo uploads
+- Known limitation: Resend is in test mode — it can only deliver to the account owner's own email until a sending domain is verified at resend.com/domains. Verification/reset email failures are caught and logged, not surfaced to the client, so signup/login still succeed in test mode.
 
 ## Stack
 

@@ -18,6 +18,11 @@ X (Twitter) — interaction patterns: tap card → post detail, inline reply inp
 - Emergency: #DC2626, Warning: #F59E0B
 - Fonts: Inter_400Regular / 500Medium / 600SemiBold / 700Bold
 
+## Setup / re-import notes
+- After a fresh GitHub import, artifact.toml files can exist on disk with no workflows registered (`listArtifacts()` returns empty, `.replit` `[workflows]` empty). Reading/exploring the artifact dirs triggers re-registration; workflows then appear automatically without calling `createArtifact` again.
+- Object storage bucket is provisioned (`setupObjectStorage()`), but no upload routes/UI are wired — photo uploads are still a stub in the Create screen.
+- Signup's and resend-verification's `sendVerificationEmail` calls were unguarded and threw 500s under Resend test-mode restrictions; wrapped in try/catch (log-only) to match the forgot-password pattern — signup/login must succeed even when email delivery fails.
+
 ## Key patterns
 - `useSafeAreaInsets()` for all top/bottom padding; web gets 67px top / 84px bottom tab fallback
 - `Share` from react-native (built-in) for native share sheet — no expo-sharing needed

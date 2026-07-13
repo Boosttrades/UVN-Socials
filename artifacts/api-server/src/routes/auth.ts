@@ -151,7 +151,14 @@ router.post("/signup", async (req, res) => {
 
   // Send verification email
   const verificationUrl = `${getAppBaseUrl(req)}/api/auth/verify?token=${verificationToken}`;
-  await sendVerificationEmail({ to: user.email, name: user.name, verificationUrl });
+  try {
+    await sendVerificationEmail({ to: user.email, name: user.name, verificationUrl });
+  } catch (err) {
+    // Don't fail account creation over an email-delivery hiccup (e.g. Resend
+    // test-mode restrictions before a sending domain is verified) — the
+    // account still exists and can use "resend verification" later.
+    req.log?.error?.({ err }, "Failed to send verification email");
+  }
 
   res.status(201).json({
     message: "Account created! Check your email to verify your account.",
@@ -305,7 +312,11 @@ router.post("/resend-verification", async (req, res) => {
     .where(eq(usersTable.id, user.id));
 
   const verificationUrl = `${getAppBaseUrl(req)}/api/auth/verify?token=${verificationToken}`;
-  await sendVerificationEmail({ to: user.email, name: user.name, verificationUrl });
+  try {
+    await sendVerificationEmail({ to: user.email, name: user.name, verificationUrl });
+  } catch (err) {
+    req.log?.error?.({ err }, "Failed to send verification email");
+  }
 
   res.json({ message: "If that account exists and is unverified, a new link has been sent." });
 });
