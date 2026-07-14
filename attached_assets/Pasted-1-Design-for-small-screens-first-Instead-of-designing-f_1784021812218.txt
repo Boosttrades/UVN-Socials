@@ -1,0 +1,237 @@
+1. Design for small screens first
+
+Instead of designing for large phones and shrinking everything, start with a 360px wide screen (common Android size).
+	•	Large touch targets (44 to 48px)
+	•	One column layout
+	•	Avoid tiny text (minimum 16px for body text)
+	•	Don’t cram too much information on one screen
+
+⸻
+
+2. Compress every image
+
+Images are usually the biggest reason apps feel slow.
+
+Instead of uploading:
+	•	4 MB JPEG
+	•	8 MB PNG
+
+Use:
+	•	WebP
+	•	AVIF (even smaller if supported)
+	•	Around 100 to 300 KB for feed images
+
+A user should never have to download a 5 MB image just to read a post.
+
+⸻
+
+3. Lazy load images
+
+Only download images the user is about to see.
+
+Example:
+
+User opens Home.
+
+Load:
+	•	First 10 posts.
+
+As they scroll,
+
+Load:
+	•	Next 10.
+
+Not all 500 posts.
+
+⸻
+
+4. Infinite scrolling
+
+Instead of loading every post at once:
+
+Load 10 to 20 posts.
+
+When the user reaches the bottom:
+
+Load another 10.
+
+This keeps memory usage low.
+
+⸻
+
+5. Cache images
+
+If someone views a post today,
+
+Don’t download the image again tomorrow unless it has changed.
+
+Their phone already has it.
+
+This makes scrolling much faster.
+
+⸻
+
+6. Compress videos
+
+If you eventually allow videos:
+
+Never autoplay full HD.
+
+Use:
+	•	480p preview
+	•	Load HD only when tapped.
+
+⸻
+
+7. Skeleton loading
+
+Instead of showing a blank white screen:
+
+Show grey placeholders while content loads.
+
+Users perceive this as much faster.
+
+⸻
+
+8. Minimize animations
+
+Fancy animations are nice.
+
+Too many:
+	•	Drain battery
+	•	Heat phones
+	•	Lag on budget devices
+
+Keep animations short and smooth.
+
+⸻
+
+9. Dark mode
+
+Dark mode isn’t just about appearance.
+
+On OLED screens it can save battery.
+
+Since we discussed your app using an emerald green accent, pairing it with a dark theme is a good choice.
+
+⸻
+
+10. Reduce API calls
+
+Don’t ask the server for everything repeatedly.
+
+Example:
+
+Open app.
+
+One request gets:
+	•	Latest posts
+	•	Categories
+	•	Notifications count
+
+Instead of making three or four separate requests.
+
+⸻
+
+11. Cache text
+
+News articles don’t change every second.
+
+Save them locally.
+
+If the user opens the article again,
+
+Open instantly from storage.
+
+Refresh only when needed.
+
+⸻
+
+12. Use pagination
+
+Don’t fetch 1,000 posts.
+
+Use pages.
+
+Page 1:
+20 posts
+
+Page 2:
+20 posts
+
+Page 3:
+20 posts
+
+This reduces bandwidth and memory use.
+
+⸻
+
+13. Optimize fonts
+
+Avoid loading many font families.
+
+Use:
+	•	One font family
+	•	Two weights (Regular and Bold)
+
+This reduces download size.
+
+⸻
+
+14. Reduce JavaScript
+
+If you’re building with React, React Native, or a similar framework:
+
+Avoid unnecessary libraries.
+
+One library can add several hundred kilobytes to your app.
+
+Only include what’s needed.
+
+⸻
+
+15. Preload the next screen
+
+If the user is reading an article,
+
+Quietly prepare the next likely content in the background.
+
+When they tap,
+
+It opens almost instantly.
+
+⸻
+
+16. Support poor networks
+
+Many users in Nigeria use unstable 3G or 4G connections.
+
+Your app should:
+	•	Retry failed requests.
+	•	Cache recent content for offline reading.
+	•	Show a friendly “No connection” message instead of crashing.
+	•	Continue displaying already downloaded posts until the connection returns.
+
+⸻
+
+17. Keep the app lightweight
+
+Aim for:
+	•	Initial page load under 2 to 3 seconds on a typical 4G connection.
+	•	Images under 300 KB each.
+	•	Only download what the user needs.
+	•	Smooth scrolling, even on entry level Android phones with 2 to 3 GB of RAM.
+
+For Ughelli Vibes specifically
+
+Since your app is an informative platform with categories, a feed, and sponsored posts, I’d prioritize:
+	1.	Small screen-first responsive design.
+	2.	Image compression with WebP.
+	3.	Lazy loading and infinite scrolling.
+	4.	Caching images and articles.
+	5.	Pagination for feeds.
+	6.	Skeleton loading while content fetches.
+	7.	Offline caching of recently viewed posts.
+	8.	Minimal, smooth animations.
+	9.	Efficient API requests.
+	10.	Responsive media, serving smaller images to smaller screens.
