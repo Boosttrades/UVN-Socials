@@ -336,6 +336,25 @@ export function useUserProfile(username: string | undefined) {
   });
 }
 
+export interface ApiUserSearchResult {
+  id: string;
+  name: string;
+  username: string;
+  isFollowing: boolean;
+  isMe: boolean;
+}
+
+export function useSearchUsers(query: string) {
+  const { token } = useAuth();
+  const trimmed = query.trim();
+  return useQuery({
+    queryKey: ['userSearch', trimmed, token ?? null],
+    queryFn: () => apiRequest<{ users: ApiUserSearchResult[] }>(`/users/search?q=${encodeURIComponent(trimmed)}`, { token }),
+    select: (data) => data.users,
+    enabled: trimmed.length > 0,
+  });
+}
+
 export function useFollowUser(username: string | undefined) {
   const { token } = useAuth();
   const queryClient = useQueryClient();

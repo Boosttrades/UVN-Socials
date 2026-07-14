@@ -1,9 +1,59 @@
 import { Router, type IRouter } from "express";
 import { db, usersTable, postsTable, followsTable } from "@workspace/db";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { requireAuth, optionalAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
+
+// ─── GET /api/users/search?q= ────────────────────────────────────────────────
+// People search by name or username (case-insensitive, partial match).
+// Registered before the `/:username` route below so "search" is never
+// mistaken for a username lookup.
+
+router.get("/search", optionalAuth, async (req, res) => {
+  const currentUser = (req as any).currentUser as { id: string } | undefined;
+  const q = String(req.query.q ?? "").trim();
+
+  if (!q) {
+    res.json({ users: [] });
+    return;
+  }
+
+  const pattern = `%${q}%`;
+  const results = await db
+    .select({ id: usersTable.id, name: usersTable.name, username: usersTable.username })
+    .from(usersTable)
+    .where(or(sql`${usersTable.name} ILIKE ${pattern}`, sql`${usersTable.username} ILIKE ${pattern}`))
+    .orderBy(usersTable.name)
+    .limit(20);
+
+  let followingIds = new Set<string>();
+  if (currentUser && results.length > 0) {
+    const rows = await db
+      .select({ followingId: followsTable.followingId })
+      .from(followsTable)
+      .where(
+        and(
+          eq(followsTable.followerId, currentUser.id),
+          inArray(
+            followsTable.followingId,
+            results.map((u) => u.id)
+          )
+        )
+      );
+    followingIds = new Set(rows.map((r) => r.followingId));
+  }
+
+  res.json({
+    users: results.map((u) => ({
+      id: u.id,
+      name: u.name,
+      username: u.username,
+      isFollowing: followingIds.has(u.id),
+      isMe: currentUser?.id === u.id,
+    })),
+  });
+});
 
 // ─── GET /api/users/:username ────────────────────────────────────────────────
 // Public profile lookup by username — includes follower/following/post counts
