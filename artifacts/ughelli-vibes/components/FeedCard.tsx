@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Image,
   Platform,
   Pressable,
   Share,
@@ -9,13 +8,22 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
 import { CATEGORY_COLORS, type FeedPost } from '@/constants/mockData';
-import { useBookmarkPost, useLikePost, useSharePost } from '@/hooks/usePosts';
+import { commentsQueryKey, useBookmarkPost, useLikePost, useSharePost } from '@/hooks/usePosts';
+import { apiRequest } from '@/utils/api';
+
+// expo-image caches decoded images on disk, so scrolling back to a post
+// already shown doesn't re-download the image (item 5/17 of the perf pass:
+// "cache images").
+const IMAGE_CACHE_POLICY = 'memory-disk' as const;
+const BLURHASH_PLACEHOLDER = 'L6PZfSi_.AyE_3t7t7R**0o#DgR4';
 
 interface FeedCardProps {
   post: FeedPost;
@@ -31,6 +39,7 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
   const colors = useColors();
   const router = useRouter();
   const { token } = useAuth();
+  const queryClient = useQueryClient();
   const likePost = useLikePost();
   const bookmarkPost = useBookmarkPost();
   const sharePost = useSharePost();
@@ -69,6 +78,17 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
     router.push(`/post/${post.id}` as any);
   }
 
+  // Quietly warm the post-detail screen's data while the tap gesture is
+  // still resolving, so by the time navigation lands the comments are
+  // already in cache and the screen opens without its own loading spinner
+  // (item 15/17: "preload the next screen").
+  function handlePressIn() {
+    queryClient.prefetchQuery({
+      queryKey: commentsQueryKey(post.id),
+      queryFn: () => apiRequest<{ comments: unknown[] }>(`/posts/${post.id}/comments`),
+    });
+  }
+
   async function handleShare() {
     sharePost.mutate(post.id);
     try {
@@ -86,6 +106,7 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
     <TouchableOpacity
       activeOpacity={0.97}
       onPress={handleCardPress}
+      onPressIn={handlePressIn}
       style={[
         styles.card,
         {
@@ -160,9 +181,18 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
         </Text>
       ) : null}
 
-      {/* Image */}
+      {/* Image — expo-image lazy-loads off the JS thread and caches to disk,
+          so it only downloads once per image even across app restarts. */}
       {post.imageSource ? (
-        <Image source={post.imageSource} style={styles.image} resizeMode="cover" />
+        <Image
+          source={post.imageSource}
+          style={styles.image}
+          contentFit="cover"
+          transition={150}
+          cachePolicy={IMAGE_CACHE_POLICY}
+          placeholder={{ blurhash: BLURHASH_PLACEHOLDER }}
+          recyclingKey={post.id}
+        />
       ) : null}
 
       {/* Job details */}

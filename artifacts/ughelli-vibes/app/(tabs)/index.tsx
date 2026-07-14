@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Platform,
   Pressable,
@@ -14,6 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import FeedCard from '@/components/FeedCard';
 import EmergencyBanner from '@/components/EmergencyBanner';
+import OfflineBanner from '@/components/OfflineBanner';
+import { SkeletonFeedList } from '@/components/SkeletonFeedCard';
 import { ALL_CATEGORIES, type PostCategory } from '@/constants/mockData';
 import { useFeed } from '@/hooks/usePosts';
 
@@ -25,7 +28,15 @@ export default function ForYouScreen() {
   const insets = useSafeAreaInsets();
   const [activeFilter, setActiveFilter] = useState<FilterOption>('All');
   const [refreshing, setRefreshing] = useState(false);
-  const { data: posts = [], isFetching, refetch } = useFeed();
+  const {
+    data: posts = [],
+    isLoading,
+    isFetching,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useFeed();
 
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomPad = Platform.OS === 'web' ? 84 : insets.bottom + 60;
@@ -37,6 +48,14 @@ export default function ForYouScreen() {
     setRefreshing(true);
     refetch().finally(() => setRefreshing(false));
   }, [refetch]);
+
+  // Infinite scroll (item 4/17): load the next 20 posts only once the user
+  // is actually near the bottom, instead of fetching everything up front.
+  const handleEndReached = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage && activeFilter === 'All') {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, activeFilter, fetchNextPage]);
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -76,6 +95,7 @@ export default function ForYouScreen() {
 
       {/* Emergency ticker */}
       <EmergencyBanner />
+      <OfflineBanner />
 
       {/* Category filter chips */}
       <ScrollView
@@ -106,33 +126,53 @@ export default function ForYouScreen() {
         })}
       </ScrollView>
 
-      {/* Feed */}
-      <FlatList
-        data={filteredPosts}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <FeedCard post={item} />}
-        contentContainerStyle={[styles.feedPadding, { paddingBottom: bottomPad }]}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing || isFetching}
-            onRefresh={handleRefresh}
-            tintColor={colors.primary}
-            colors={[colors.primary]}
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Feather name="inbox" size={40} color={colors.mutedForeground} />
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
-              {activeFilter === 'All' ? 'No updates yet' : `No ${activeFilter} posts yet`}
-            </Text>
-            <Text style={[styles.emptyHint, { color: colors.mutedForeground }]}>
-              Be the first to post something to the community
-            </Text>
-          </View>
-        }
-      />
+      {/* Feed — skeleton placeholders while the first page loads instead of
+          a blank screen (item 7/17). */}
+      {isLoading ? (
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.feedPadding}>
+          <SkeletonFeedList />
+        </ScrollView>
+      ) : (
+        <FlatList
+          data={filteredPosts}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => <FeedCard post={item} />}
+          contentContainerStyle={[styles.feedPadding, { paddingBottom: bottomPad }]}
+          showsVerticalScrollIndicator={false}
+          onEndReached={handleEndReached}
+          onEndReachedThreshold={0.4}
+          // Windowing tuned for entry-level Android hardware (item 17/17):
+          // keep only a few off-screen cards mounted at once.
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={7}
+          removeClippedSubviews
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing || (isFetching && !isFetchingNextPage)}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <ActivityIndicator style={styles.footerSpinner} color={colors.primary} />
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Feather name="inbox" size={40} color={colors.mutedForeground} />
+              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+                {activeFilter === 'All' ? 'No updates yet' : `No ${activeFilter} posts yet`}
+              </Text>
+              <Text style={[styles.emptyHint, { color: colors.mutedForeground }]}>
+                Be the first to post something to the community
+              </Text>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }
@@ -202,6 +242,9 @@ const styles = StyleSheet.create({
   },
   feedPadding: {
     paddingTop: 8,
+  },
+  footerSpinner: {
+    paddingVertical: 20,
   },
   empty: {
     alignItems: 'center',

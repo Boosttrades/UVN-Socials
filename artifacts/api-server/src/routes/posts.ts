@@ -9,17 +9,48 @@ import {
   createPostSchema,
   createCommentSchema,
 } from "@workspace/db";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import { requireAuth, optionalAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 50;
+
 // ─── GET /api/posts ──────────────────────────────────────────────────────────
-// Public feed — newest first. No auth required to read, but if a valid
-// session is present we include this user's like/bookmark state per post.
+// Public feed — newest first, paginated. No auth required to read, but if a
+// valid session is present we include this user's like/bookmark state per
+// post.
+//
+// Pagination is keyset-based (not offset-based) so it stays correct even as
+// new posts are inserted while a client is paging through: the cursor is
+// `<createdAt ISO>_<id>` of the last row seen. Pass `?limit=20` to control
+// page size and `?cursor=...` (from the previous response's `nextCursor`) to
+// fetch the next page. The response omits `nextCursor` (sets it to null)
+// once there are no more rows.
 
 router.get("/", optionalAuth, async (req, res) => {
   const currentUser = (req as any).currentUser as { id: string } | undefined;
+
+  const limit = Math.min(
+    MAX_PAGE_SIZE,
+    Math.max(1, parseInt(String(req.query.limit ?? DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE)
+  );
+
+  let cursorFilter;
+  const rawCursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
+  if (rawCursor) {
+    const sepIndex = rawCursor.lastIndexOf("_");
+    const cursorCreatedAt = sepIndex >= 0 ? rawCursor.slice(0, sepIndex) : undefined;
+    const cursorId = sepIndex >= 0 ? rawCursor.slice(sepIndex + 1) : undefined;
+    const parsedDate = cursorCreatedAt ? new Date(cursorCreatedAt) : undefined;
+    if (parsedDate && !isNaN(parsedDate.getTime()) && cursorId) {
+      cursorFilter = or(
+        lt(postsTable.createdAt, parsedDate),
+        and(eq(postsTable.createdAt, parsedDate), lt(postsTable.id, cursorId))
+      );
+    }
+  }
 
   const rows = await db
     .select({
@@ -48,9 +79,16 @@ router.get("/", optionalAuth, async (req, res) => {
     })
     .from(postsTable)
     .innerJoin(usersTable, eq(postsTable.authorId, usersTable.id))
-    .orderBy(desc(postsTable.createdAt));
+    .where(cursorFilter)
+    .orderBy(desc(postsTable.createdAt), desc(postsTable.id))
+    .limit(limit + 1);
 
-  res.json({ posts: rows });
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  const last = page[page.length - 1];
+  const nextCursor = hasMore && last ? `${new Date(last.createdAt).toISOString()}_${last.id}` : null;
+
+  res.json({ posts: page, nextCursor });
 });
 
 // ─── POST /api/posts ──────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { apiRequest } from '@/utils/api';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Comment, FeedPost, PostCategory } from '@/constants/mockData';
@@ -94,12 +94,29 @@ export function apiPostToFeedPost(post: ApiPost): FeedPost {
 
 export const POSTS_QUERY_KEY = ['posts'];
 
+interface PostsPage {
+  posts: ApiPost[];
+  nextCursor: string | null;
+}
+
+type PostsInfiniteData = InfiniteData<PostsPage, string | undefined>;
+
+// Feed is paginated (20 posts per page) with keyset cursors so scrolling to
+// the bottom loads the next page instead of ever fetching the whole table.
+// `select` flattens all loaded pages into a single array, so existing
+// callers that just read `data` as a flat list of posts keep working
+// unchanged; call `fetchNextPage()` to load more.
 export function useFeed() {
   const { token } = useAuth();
-  return useQuery({
+  return useInfiniteQuery({
     queryKey: [...POSTS_QUERY_KEY, token ?? null],
-    queryFn: () => apiRequest<{ posts: ApiPost[] }>('/posts', { token }),
-    select: (data) => data.posts.map(apiPostToFeedPost),
+    queryFn: ({ pageParam }: { pageParam?: string }) =>
+      apiRequest<PostsPage>(`/posts${pageParam ? `?cursor=${encodeURIComponent(pageParam)}` : ''}`, {
+        token,
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    select: (data) => data.pages.flatMap((page) => page.posts.map(apiPostToFeedPost)),
   });
 }
 
@@ -127,12 +144,16 @@ function patchPostInCache(
   postId: string,
   patch: Partial<ApiPost>
 ) {
-  queryClient.setQueriesData<{ posts: ApiPost[] } | undefined>(
+  queryClient.setQueriesData<PostsInfiniteData | undefined>(
     { queryKey: POSTS_QUERY_KEY },
     (data) => {
       if (!data) return data;
       return {
-        posts: data.posts.map((p) => (p.id === postId ? { ...p, ...patch } : p)),
+        ...data,
+        pages: data.pages.map((page) => ({
+          ...page,
+          posts: page.posts.map((p) => (p.id === postId ? { ...p, ...patch } : p)),
+        })),
       };
     }
   );
@@ -150,16 +171,20 @@ export function useLikePost() {
       }),
     onMutate: async (postId: string) => {
       // Optimistic toggle so the UI feels instant.
-      queryClient.setQueriesData<{ posts: ApiPost[] } | undefined>(
+      queryClient.setQueriesData<PostsInfiniteData | undefined>(
         { queryKey: POSTS_QUERY_KEY },
         (data) => {
           if (!data) return data;
           return {
-            posts: data.posts.map((p) =>
-              p.id === postId
-                ? { ...p, isLiked: !p.isLiked, likesCount: p.likesCount + (p.isLiked ? -1 : 1) }
-                : p
-            ),
+            ...data,
+            pages: data.pages.map((page) => ({
+              ...page,
+              posts: page.posts.map((p) =>
+                p.id === postId
+                  ? { ...p, isLiked: !p.isLiked, likesCount: p.likesCount + (p.isLiked ? -1 : 1) }
+                  : p
+              ),
+            })),
           };
         }
       );
@@ -184,12 +209,16 @@ export function useBookmarkPost() {
         token,
       }),
     onMutate: async (postId: string) => {
-      queryClient.setQueriesData<{ posts: ApiPost[] } | undefined>(
+      queryClient.setQueriesData<PostsInfiniteData | undefined>(
         { queryKey: POSTS_QUERY_KEY },
         (data) => {
           if (!data) return data;
           return {
-            posts: data.posts.map((p) => (p.id === postId ? { ...p, isBookmarked: !p.isBookmarked } : p)),
+            ...data,
+            pages: data.pages.map((page) => ({
+              ...page,
+              posts: page.posts.map((p) => (p.id === postId ? { ...p, isBookmarked: !p.isBookmarked } : p)),
+            })),
           };
         }
       );

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   FlatList,
-  Image,
   Keyboard,
   Platform,
   Pressable,
@@ -12,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -205,7 +205,14 @@ export default function PostDetailScreen() {
 
         {/* Image */}
         {safePost.imageSource ? (
-          <Image source={safePost.imageSource} style={styles.image} resizeMode="cover" />
+          <Image
+            source={safePost.imageSource}
+            style={styles.image}
+            contentFit="cover"
+            transition={150}
+            cachePolicy="memory-disk"
+            recyclingKey={safePost.id}
+          />
         ) : null}
 
         {/* Job / Event details */}

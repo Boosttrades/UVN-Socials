@@ -25,6 +25,11 @@ X (Twitter) — interaction patterns: tap card → post detail, inline reply inp
 - Testing signup/login locally requires bypassing Resend's test-mode email restriction: `UPDATE users SET email_verified = true WHERE email = '...'` via `psql "$DATABASE_URL"` after signup, since verification emails can only deliver to the account owner's inbox.
 - Monorepo TS project references: after editing anything under `lib/db` or `lib/api-zod`, run `pnpm run typecheck:libs` (`tsc --build` at repo root) before typechecking any artifact — otherwise tsc reports stale "Output file has not been built from source" errors unrelated to the actual change.
 
+## Performance pass (2026-07-14)
+- `GET /api/posts` is keyset-paginated (`?limit=&cursor=`), cursor format `<createdAt ISO>_<id>`, response `{posts, nextCursor}`. `useFeed()` in the client wraps this in `useInfiniteQuery` but exposes a flattened array via `select`, so old call sites reading `data` as a flat list (EmergencyBanner, discover, post detail) kept working unchanged — only `index.tsx`'s FlatList needed `fetchNextPage`/`onEndReached` wiring.
+- React Query cache is persisted to AsyncStorage (`PersistQueryClientProvider` + `@tanstack/query-async-storage-persister`) and `onlineManager` is wired to `@react-native-community/netinfo`, in `app/_layout.tsx`. Any optimistic-update code that does `setQueriesData` against the posts query must operate on the `InfiniteData` `{pages: [...]}` shape, not a flat `{posts}` object — see `patchPostInCache` in `hooks/usePosts.ts`.
+- Images use `expo-image` (cachePolicy `memory-disk`) everywhere, and uploads are compressed client-side via `expo-image-manipulator` (resize to 1080px width, quality 0.7) before the direct-to-GCS presigned PUT — the API server never touches image bytes so compression has to happen on-device, not server-side.
+
 ## Key patterns
 - `useSafeAreaInsets()` for all top/bottom padding; web gets 67px top / 84px bottom tab fallback
 - `Share` from react-native (built-in) for native share sheet — no expo-sharing needed

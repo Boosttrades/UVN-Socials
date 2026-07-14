@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Image,
   Platform,
   Pressable,
   ScrollView,
@@ -10,12 +9,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
 import { ALL_CATEGORIES, type PostCategory } from '@/constants/mockData';
@@ -90,6 +91,29 @@ export default function CreateScreen() {
   }
 
   /**
+   * Resizes to a feed-friendly width and re-encodes at reduced quality
+   * before upload (item 2/17: "compress every image" — a user should never
+   * have to download a multi-MB image just to read a post). 1080px is wide
+   * enough for any phone screen the image will actually be shown at, and
+   * quality 0.7 keeps typical feed photos in the ~100-300KB target range
+   * mentioned in the perf guidelines instead of the multi-MB originals
+   * phone cameras produce.
+   */
+  async function compressImage(uri: string): Promise<ImagePicker.ImagePickerAsset | { uri: string }> {
+    try {
+      const result = await ImageManipulator.manipulateAsync(uri, [{ resize: { width: 1080 } }], {
+        compress: 0.7,
+        format: ImageManipulator.SaveFormat.JPEG,
+      });
+      return result;
+    } catch {
+      // If manipulation fails for any reason, fall back to the original —
+      // better to upload an uncompressed image than to block posting.
+      return { uri };
+    }
+  }
+
+  /**
    * Uploads the picked image directly to the presigned object storage URL and
    * returns the server-relative path (`/api/storage/objects/...`) to store on
    * the post. Returns undefined if there is no image to upload.
@@ -99,7 +123,8 @@ export default function CreateScreen() {
 
     setIsUploadingImage(true);
     try {
-      const fileResponse = await fetch(imageUri);
+      const compressed = await compressImage(imageUri);
+      const fileResponse = await fetch(compressed.uri);
       const blob = await fileResponse.blob();
       const contentType = blob.type || 'image/jpeg';
 
