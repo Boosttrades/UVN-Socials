@@ -49,6 +49,7 @@ A local news network mobile app for Ughelli, Nigeria — inspired by X's interac
 - Auth: Bearer session tokens in AsyncStorage (30-day expiry); `AuthContext` + `AuthGate` in `app/_layout.tsx` redirect based on session state
 - Posts: `POST /api/posts` (auth required) creates, `GET /api/posts` lists newest-first (public read), `DELETE /api/posts/:id` (author-only). Feed/Discover/Profile all read through `hooks/usePosts.ts` (TanStack Query) — no more mock feed data
 - Comments have no backend yet — replies on the post detail screen are session-local only (lost on reload)
+- People search: `GET /api/users/search?q=` (name/username partial match) backs a Posts/People toggle in Discover; tapping a person opens `app/user/[username].tsx`, a public profile screen (stats, posts, Follow button) built on the existing `useUserProfile`/`useFollowUser` hooks
 - Password reset: `app/auth/forgot-password.tsx` → email with link to `app/auth/reset-password.tsx?token=...` → `POST /api/auth/reset-password`. Reset tokens expire in 1 hour and resetting invalidates all existing sessions for that user.
 - `useSafeAreaInsets()` for all top/bottom padding; web gets 67px top / 84px bottom tab fallback
 - `Share` from react-native (built-in) for native share sheet — no expo-sharing needed
