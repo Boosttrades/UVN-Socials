@@ -9,7 +9,7 @@ import {
   signupSchema,
   updateProfileSchema,
 } from "@workspace/db/schema";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, or } from "drizzle-orm";
 import { sendPasswordResetEmail, sendVerificationEmail } from "../lib/email";
 import { requireAuth } from "../middlewares/auth";
 
@@ -87,7 +87,7 @@ function msUntilNextProfileEdit(profileUpdatedAt: Date | null): number {
   return nextAllowed.getTime() - Date.now();
 }
 
-const WRONG_CREDENTIALS_MSG = "Wrong email or password";
+const WRONG_CREDENTIALS_MSG = "Wrong email/username or password";
 
 // ─── POST /api/auth/signup ───────────────────────────────────────────────────
 
@@ -175,17 +175,23 @@ router.post("/login", async (req, res) => {
     return;
   }
 
-  const { email, password } = parsed.data;
+  const { identifier, password } = parsed.data;
+  const normalizedIdentifier = identifier.trim().toLowerCase();
 
   const [user] = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.email, email.toLowerCase()))
+    .where(
+      or(
+        eq(usersTable.email, normalizedIdentifier),
+        eq(usersTable.username, normalizedIdentifier)
+      )
+    )
     .limit(1);
 
   if (!user) {
     // Run a dummy hash verify so response time is constant whether or not
-    // the email exists — prevents timing-based email enumeration.
+    // the account exists — prevents timing-based account enumeration.
     await verifyPassword(await getDummyHash(), password).catch(() => {});
     res.status(401).json({ error: WRONG_CREDENTIALS_MSG });
     return;
@@ -202,6 +208,7 @@ router.post("/login", async (req, res) => {
     res.status(403).json({
       error: "Please verify your email before logging in.",
       code: "EMAIL_NOT_VERIFIED",
+      email: user.email,
     });
     return;
   }

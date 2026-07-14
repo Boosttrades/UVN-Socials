@@ -20,7 +20,7 @@ export default function LoginScreen() {
   const { login, resendVerification } = useAuth();
   const insets = useSafeAreaInsets();
 
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,8 +30,8 @@ export default function LoginScreen() {
   const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent'>('idle');
 
   async function handleLogin() {
-    if (!email.trim() || !password) {
-      setError('Please enter your email and password.');
+    if (!identifier.trim() || !password) {
+      setError('Please enter your email or username and password.');
       return;
     }
 
@@ -40,11 +40,13 @@ export default function LoginScreen() {
     setResendState('idle');
     setLoading(true);
     try {
-      await login(email.trim(), password);
+      await login(identifier.trim(), password);
       // AuthContext updates → _layout.tsx redirects to (tabs)
     } catch (err) {
       if (err instanceof ApiError && err.code === 'EMAIL_NOT_VERIFIED') {
-        setUnverifiedEmail(email.trim());
+        const emailFromServer =
+          typeof err.data?.email === 'string' ? err.data.email : identifier.trim();
+        setUnverifiedEmail(emailFromServer);
       } else if (err instanceof ApiError) {
         setError(err.message);
       } else {

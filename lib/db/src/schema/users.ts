@@ -30,7 +30,8 @@ export const signupSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  email: z.email(),
+  // Either the account's email address or its username (without the "@").
+  identifier: z.string().min(1),
   password: z.string().min(1),
 });
 
