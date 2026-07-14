@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import FeedCard from '@/components/FeedCard';
@@ -26,6 +27,7 @@ const FILTER_TABS: FilterOption[] = ['All', ...ALL_CATEGORIES];
 export default function ForYouScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [activeFilter, setActiveFilter] = useState<FilterOption>('All');
   const [refreshing, setRefreshing] = useState(false);
   const {
@@ -82,12 +84,24 @@ export default function ForYouScreen() {
 
         <View style={styles.headerActions}>
           <View style={{ position: 'relative' }}>
-            <Pressable style={styles.iconBtn} hitSlop={6}>
+            <Pressable
+              style={styles.iconBtn}
+              hitSlop={6}
+              onPress={() => router.push('/(tabs)/activity' as any)}
+              accessibilityRole="button"
+              accessibilityLabel="Notifications"
+            >
               <Feather name="bell" size={22} color={colors.foreground} />
             </Pressable>
             <View style={[styles.notifBadge, { backgroundColor: colors.emergency }]} />
           </View>
-          <Pressable style={styles.iconBtn} hitSlop={6}>
+          <Pressable
+            style={styles.iconBtn}
+            hitSlop={6}
+            onPress={() => router.push('/(tabs)/discover' as any)}
+            accessibilityRole="button"
+            accessibilityLabel="Search"
+          >
             <Feather name="search" size={22} color={colors.foreground} />
           </Pressable>
         </View>
