@@ -2,7 +2,7 @@
 
 A local news network app for Ughelli, Nigeria (X-inspired interaction patterns: tap a card for detail, inline replies, comment threads, emergency banner). This file is a snapshot for anyone picking up the build — **update it at every checkpoint** so it never goes stale.
 
-Last updated: July 15, 2026 (rev 2)
+Last updated: July 15, 2026 (rev 3)
 
 ## What's real right now
 
@@ -24,11 +24,13 @@ Last updated: July 15, 2026 (rev 2)
 - **Other users' profiles** — tapping a person in People search opens `app/user/[username].tsx`, a public profile screen (avatar, name, handle, follower/following/post stats, their real posts, Follow/Following button). Reuses the same `useUserProfile`/`useFollowUser` hooks the post-detail screen already used.
 - **Home header buttons** — the bell (notifications) and search icons in the Home tab header now navigate to Activity and Discover respectively; previously they were unwired and did nothing on tap.
 - **Emergency banner** — shown only when a real post has `isEmergency: true`, links to that post.
+- **Supabase connection** — `@supabase/supabase-js` installed in the API server; singleton client in `artifacts/api-server/src/lib/supabase.ts` using `SUPABASE_URL` / `SUPABASE_ANON_KEY` (Replit Secrets). Connects to an existing Supabase project (Profiles, Posts, Comments, Likes tables + storage buckets + Supabase Auth) without touching its schema. Verified live: `GET /api/supabase/ping` → `{ ok: true, latencyMs: 568 }`.
 
 ## What's intentionally not built yet
 
 - **Comment likes** — the like count next to each comment is still UI-only; it doesn't persist or affect anything server-side.
-- **Multi-user social graph at scale** — the API and schema are generic (any authenticated user can post, like, bookmark, follow, or share; feed shows everyone's posts), so it works correctly with many accounts, but there's no notifications/activity feed tie-in yet for "so-and-so followed you" or "so-and-so liked your post" — the bell icon opens the Activity tab, but that tab's list is still session-local mock data, not real notifications.
+- **Notifications / activity feed** — the bell icon opens the Activity tab, but that tab's list is still session-local mock data; there's no backend for "so-and-so followed you / liked your post" events yet.
+- **Supabase data integration** — the Supabase client is connected and verified, but the app's data layer (posts, comments, auth) still runs through the Express API + Replit Postgres. The Supabase tables are not yet used for reads or writes.
 
 ## Current project tasks (see task list for live status)
 
@@ -39,11 +41,13 @@ Last updated: July 15, 2026 (rev 2)
 - Make post likes, shares, and bookmarks actually save — **done**
 - Let users follow each other and see real follower counts — **done**
 - Let users search for people, not just posts — **done**
+- Connect to Supabase — **done**
 
 ## Key files if you're picking this up
 
 - `lib/db/src/schema/{users,sessions,posts,comments,postLikes,postBookmarks,follows}.ts` — Drizzle schema (`posts` now also has `imageUrl`/`sharesCount`; `post_likes`/`post_bookmarks`/`follows` are unique-pair join tables)
-- `artifacts/api-server/src/routes/{auth,posts,users,storage}.ts` — API routes (comment/like/bookmark/share routes live in `posts.ts`; follow + public profile + people search (`GET /users/search`) in `users.ts`; object storage upload/serve in `storage.ts`)
+- `artifacts/api-server/src/routes/{auth,posts,users,storage,supabase}.ts` — API routes (comment/like/bookmark/share routes live in `posts.ts`; follow + public profile + people search in `users.ts`; object storage in `storage.ts`; Supabase connectivity test in `supabase.ts`)
+- `artifacts/api-server/src/lib/supabase.ts` — Supabase singleton client (anon key, `ws` WebSocket polyfill for Node 20)
 - `artifacts/api-server/src/middlewares/auth.ts` — `requireAuth` (blocks) and `optionalAuth` (attaches user if present, never blocks — used by the public feed/profile endpoints to include per-user like/bookmark/follow state)
 - `artifacts/api-server/src/lib/{objectStorage,objectAcl}.ts` — object storage service (standard skill templates, unmodified)
 - `artifacts/api-server/src/lib/email.ts` — Resend integration (verification + password reset emails)
@@ -57,16 +61,6 @@ Last updated: July 15, 2026 (rev 2)
 - `artifacts/ughelli-vibes/app/_layout.tsx` — `AuthGate` redirect logic (segments + router.replace pattern), wraps the tree in `ThemeProvider`
 - `artifacts/ughelli-vibes/app/auth/{forgot-password,reset-password}.tsx` — password reset screens
 
-## Supabase integration
-
-A Supabase JS client is wired into the API server and connects to an existing Supabase project (profiles, posts, comments, likes tables + storage buckets + Supabase Auth).
-
-- **Client**: `artifacts/api-server/src/lib/supabase.ts` — singleton `createClient()` using the anon key; RLS policies on the Supabase project apply to every query.
-- **Env vars**: `SUPABASE_URL` and `SUPABASE_ANON_KEY` (both saved as Replit Secrets).
-- **WebSocket polyfill**: Node.js 20 lacks a native `WebSocket` — `ws@8` is imported and set on `globalThis.WebSocket` before `createClient` runs, so the Supabase realtime client initialises cleanly.
-- **Test endpoint**: `GET /api/supabase/ping` — read-only query against `Profiles` table, returns `{ ok, latencyMs, rowsReturned }`. Hit it any time to verify connectivity.
-- **Table casing**: the Supabase schema uses PascalCase table/column names (`Profiles`, `Id`, etc.) — match this exactly in any future queries.
-
 ## Known gotchas
 
 - `@node-rs/argon2` is a native binary — it must stay in the esbuild `external` list in `artifacts/api-server/build.mjs` (along with `*.node`), or the API server build breaks.
@@ -75,3 +69,5 @@ A Supabase JS client is wired into the API server and connects to an existing Su
 - The 14-day profile-edit cooldown is enforced both client-side (for UX — countdown + disabled form) and server-side (source of truth — `PATCH /auth/profile` returns `429 PROFILE_EDIT_COOLDOWN` if bypassed).
 - After changing anything in `lib/db` or `lib/api-zod`, run `pnpm run typecheck:libs` (`tsc --build`) from the repo root before typechecking `artifacts/api-server` — otherwise `tsc` reports stale "Output file has not been built from source" errors even though the source is correct.
 - The mobile client is Expo/React Native, not a web app — object storage uploads use `expo-image-picker` + a direct `fetch` PUT to the presigned URL, not the `@workspace/object-storage-web` package (that package is Uppy/React-DOM-based and does not work in React Native).
+- Supabase table/column names in this project use PascalCase (`Profiles`, `Id`, etc.) — match this exactly in any Supabase queries or you'll get "column does not exist" errors.
+- Node.js 20 lacks native WebSocket — the Supabase client needs `ws` polyfilled on `globalThis.WebSocket` before `createClient()` is called (already done in `src/lib/supabase.ts`). If you upgrade Node to 22+ this polyfill can be removed.
