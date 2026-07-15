@@ -2,7 +2,7 @@
 
 A local news network app for Ughelli, Nigeria (X-inspired interaction patterns: tap a card for detail, inline replies, comment threads, emergency banner). This file is a snapshot for anyone picking up the build — **update it at every checkpoint** so it never goes stale.
 
-Last updated: July 14, 2026
+Last updated: July 15, 2026
 
 ## What's real right now
 
