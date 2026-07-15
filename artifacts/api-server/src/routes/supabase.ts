@@ -16,8 +16,8 @@ router.get("/ping", async (_req, res) => {
     const start = Date.now();
 
     const { data, error, status } = await supabase
-      .from("profiles")
-      .select("id")
+      .from("Profiles")
+      .select("Id")
       .limit(1);
 
     const latencyMs = Date.now() - start;

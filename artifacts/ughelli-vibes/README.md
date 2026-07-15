@@ -2,7 +2,7 @@
 
 A local news network app for Ughelli, Nigeria (X-inspired interaction patterns: tap a card for detail, inline replies, comment threads, emergency banner). This file is a snapshot for anyone picking up the build — **update it at every checkpoint** so it never goes stale.
 
-Last updated: July 15, 2026
+Last updated: July 15, 2026 (rev 2)
 
 ## What's real right now
 
@@ -56,6 +56,16 @@ Last updated: July 15, 2026
 - `artifacts/ughelli-vibes/app/edit-profile.tsx` — edit name/username with password confirmation + 14-day cooldown UI
 - `artifacts/ughelli-vibes/app/_layout.tsx` — `AuthGate` redirect logic (segments + router.replace pattern), wraps the tree in `ThemeProvider`
 - `artifacts/ughelli-vibes/app/auth/{forgot-password,reset-password}.tsx` — password reset screens
+
+## Supabase integration
+
+A Supabase JS client is wired into the API server and connects to an existing Supabase project (profiles, posts, comments, likes tables + storage buckets + Supabase Auth).
+
+- **Client**: `artifacts/api-server/src/lib/supabase.ts` — singleton `createClient()` using the anon key; RLS policies on the Supabase project apply to every query.
+- **Env vars**: `SUPABASE_URL` and `SUPABASE_ANON_KEY` (both saved as Replit Secrets).
+- **WebSocket polyfill**: Node.js 20 lacks a native `WebSocket` — `ws@8` is imported and set on `globalThis.WebSocket` before `createClient` runs, so the Supabase realtime client initialises cleanly.
+- **Test endpoint**: `GET /api/supabase/ping` — read-only query against `Profiles` table, returns `{ ok, latencyMs, rowsReturned }`. Hit it any time to verify connectivity.
+- **Table casing**: the Supabase schema uses PascalCase table/column names (`Profiles`, `Id`, etc.) — match this exactly in any future queries.
 
 ## Known gotchas
 

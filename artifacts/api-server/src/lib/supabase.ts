@@ -1,3 +1,11 @@
+// Node.js 20 lacks native WebSocket — polyfill before importing Supabase so
+// the realtime client initialises without throwing.
+import { WebSocket } from "ws";
+if (!("WebSocket" in globalThis)) {
+  // @ts-ignore — intentional global polyfill
+  globalThis.WebSocket = WebSocket;
+}
+
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { logger } from "./logger";
 
@@ -14,7 +22,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
  * Supabase client using the anonymous key.
  * RLS policies on your Supabase project apply to all queries made through this client.
  * Configured via:
- *   SUPABASE_URL     — your project URL (e.g. https://xxxx.supabase.co)
+ *   SUPABASE_URL      — your project URL (e.g. https://xxxx.supabase.co)
  *   SUPABASE_ANON_KEY — your project's anon/public key
  */
 export const supabase: SupabaseClient = createClient(
