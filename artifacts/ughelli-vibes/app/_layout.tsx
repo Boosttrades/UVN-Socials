@@ -117,22 +117,25 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ErrorBoundary>
-        <PersistQueryClientProvider
-          client={queryClient}
-          persistOptions={{ persister: asyncStoragePersister, maxAge: 1000 * 60 * 60 * 24 }}
-        >
-          <GestureHandlerRootView>
-            <KeyboardProvider>
-              <ThemeProvider>
+      {/* ThemeProvider must be ABOVE ErrorBoundary so ErrorFallback can call
+          useColors() / useTheme() without throwing "must be used within
+          ThemeProvider". */}
+      <ThemeProvider>
+        <ErrorBoundary>
+          <PersistQueryClientProvider
+            client={queryClient}
+            persistOptions={{ persister: asyncStoragePersister, maxAge: 1000 * 60 * 60 * 24 }}
+          >
+            <GestureHandlerRootView>
+              <KeyboardProvider>
                 <AuthProvider>
                   <RootLayoutNav />
                 </AuthProvider>
-              </ThemeProvider>
-            </KeyboardProvider>
-          </GestureHandlerRootView>
-        </PersistQueryClientProvider>
-      </ErrorBoundary>
+              </KeyboardProvider>
+            </GestureHandlerRootView>
+          </PersistQueryClientProvider>
+        </ErrorBoundary>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }
