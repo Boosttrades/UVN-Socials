@@ -134,9 +134,9 @@ export default function LoginScreen() {
               style={styles.input}
               placeholder="john@email.com"
               placeholderTextColor="#9CA3AF"
-              value={email}
+              value={identifier}
               onChangeText={(t) => {
-                setEmail(t);
+                setIdentifier(t);
                 setUnverifiedEmail(null);
                 setResendState('idle');
               }}
