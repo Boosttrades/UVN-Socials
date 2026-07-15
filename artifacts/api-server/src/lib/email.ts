@@ -1,7 +1,15 @@
 import { Resend } from "resend";
 import { logger } from "./logger";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy singleton — instantiated on first use so a missing key doesn't crash startup.
+let _resend: Resend | null = null;
+function getResend(): Resend {
+  if (!_resend) {
+    _resend = new Resend(process.env.RESEND_API_KEY ?? "");
+  }
+  return _resend;
+}
+
 const FROM_EMAIL = process.env.FROM_EMAIL ?? "onboarding@resend.dev";
 
 interface VerificationEmailOptions {
@@ -19,7 +27,7 @@ interface VerificationEmailOptions {
 export async function sendVerificationEmail(opts: VerificationEmailOptions): Promise<void> {
   const { to, name, verificationUrl } = opts;
 
-  const { data, error } = await resend.emails.send({
+  const { data, error } = await getResend().emails.send({
     from: `Ughelli Vibes <${FROM_EMAIL}>`,
     to,
     subject: "Verify your Ughelli Vibes account",
@@ -47,7 +55,7 @@ interface PasswordResetEmailOptions {
 export async function sendPasswordResetEmail(opts: PasswordResetEmailOptions): Promise<void> {
   const { to, name, resetUrl } = opts;
 
-  const { data, error } = await resend.emails.send({
+  const { data, error } = await getResend().emails.send({
     from: `Ughelli Vibes <${FROM_EMAIL}>`,
     to,
     subject: "Reset your Ughelli Vibes password",
