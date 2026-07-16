@@ -45,14 +45,15 @@ A local news network mobile app for Ughelli, Nigeria — inspired by X's interac
 
 ## Architecture decisions
 
-- Real backend: Postgres via Drizzle (`users`, `sessions`, `posts`), Express API, Argon2id password hashing, Resend for verification email
-- Auth: Bearer session tokens in AsyncStorage (30-day expiry); `AuthContext` + `AuthGate` in `app/_layout.tsx` redirect based on session state
-- Posts: `POST /api/posts` (auth required) creates, `GET /api/posts` lists newest-first (public read), `DELETE /api/posts/:id` (author-only). Feed/Discover/Profile all read through `hooks/usePosts.ts` (TanStack Query) — no more mock feed data
-- Comments have no backend yet — replies on the post detail screen are session-local only (lost on reload)
-- People search: `GET /api/users/search?q=` (name/username partial match) backs a Posts/People toggle in Discover; tapping a person opens `app/user/[username].tsx`, a public profile screen (stats, posts, Follow button) built on the existing `useUserProfile`/`useFollowUser` hooks
-- Password reset: `app/auth/forgot-password.tsx` → email with link to `app/auth/reset-password.tsx?token=...` → `POST /api/auth/reset-password`. Reset tokens expire in 1 hour and resetting invalidates all existing sessions for that user.
-- `useSafeAreaInsets()` for all top/bottom padding; web gets 67px top / 84px bottom tab fallback
-- `Share` from react-native (built-in) for native share sheet — no expo-sharing needed
+- **Data layer: Supabase (primary) + Replit Postgres (backup dual-write)**. All reads/writes go to Supabase via `supabaseAdmin` (service role). Every mutating operation fires a background `syncToReplit()` to Drizzle as a non-blocking backup. Auth is Supabase Auth (JWT Bearer tokens); the Express API proxies it so the Expo app never calls Supabase directly.
+- Auth: Supabase JWT Bearer tokens stored in AsyncStorage; `AuthContext` stores both `token` and `refreshToken`, silently refreshes on 401 before clearing session. Custom email verification kept (Resend + `verification_token` in Profiles, `admin.updateUserById({ email_confirm: true })`).
+- Posts: `POST /api/posts` (auth required) creates, `GET /api/posts` lists newest-first (public read), `DELETE /api/posts/:id` (author-only). Feed/Discover/Profile all read through `hooks/usePosts.ts` (TanStack Query) — no more mock feed data.
+- Notifications: `POST /api/posts/:id/like`, `POST /api/posts/:postId/comments`, and `POST /api/users/:username/follow` all fire `createNotification()` (fire-and-forget) into the `Notifications` Supabase table. `GET /api/notifications` returns the current user's notifications (newest 50). `POST /api/notifications/read-all` and `POST /api/notifications/:id/read` mark as read.
+- Activity tab (`app/(tabs)/activity.tsx`) fetches real notifications from `/api/notifications` on mount and pull-to-refresh. Filter tabs (All / Reactions / Follows / Mentions / System) work client-side. Tapping a notification marks it read; "Mark all read" button calls the bulk endpoint.
+- People search: `GET /api/users/search?q=` (name/username partial match) backs a Posts/People toggle in Discover; tapping a person opens `app/user/[username].tsx`, a public profile screen (stats, posts, Follow button).
+- Password reset: `app/auth/forgot-password.tsx` → email with link to `app/auth/reset-password.tsx?token=...` → `POST /api/auth/reset-password`. Reset tokens expire in 1 hour.
+- `useSafeAreaInsets()` for all top/bottom padding; web gets 67px top / 84px bottom tab fallback.
+- `Share` from react-native (built-in) for native share sheet — no expo-sharing needed.
 
 ## Product
 

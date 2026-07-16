@@ -2,7 +2,7 @@
 
 A local news network app for Ughelli, Nigeria (X-inspired interaction patterns: tap a card for detail, inline replies, comment threads, emergency banner). This file is a snapshot for anyone picking up the build — **update it at every checkpoint** so it never goes stale.
 
-Last updated: July 15, 2026 (rev 3)
+Last updated: July 16, 2026 (rev 4)
 
 ## What's real right now
 
@@ -22,9 +22,10 @@ Last updated: July 15, 2026 (rev 3)
 - **Profile** — shows the logged-in user's real name/handle/initials, real post count, real followers/following counts, and (Saved tab) real bookmarked posts.
 - **Discover** — category grid is still a fixed navigation list (not fake data), but "Trending topics" and "Verified organizations" were removed since there's no real data to back them. Search has a Posts / People toggle: Posts still filters real posts by headline client-side; People hits a real server-side search (`GET /api/users/search?q=`, name/username partial match, case-insensitive) and lists matching accounts with Follow/Following state.
 - **Other users' profiles** — tapping a person in People search opens `app/user/[username].tsx`, a public profile screen (avatar, name, handle, follower/following/post stats, their real posts, Follow/Following button). Reuses the same `useUserProfile`/`useFollowUser` hooks the post-detail screen already used.
+- **Activity / notifications** — real backend, fully wired. Likes, comments, and follows all create a row in the Supabase `Notifications` table (fire-and-forget, no self-notifications). `GET /api/notifications` returns the current user's 50 most-recent notifications. The Activity tab (`app/(tabs)/activity.tsx`) fetches on mount + pull-to-refresh, shows actor initials/name, time-ago timestamp, and an unread dot. Filter tabs (All / Reactions / Follows / Mentions / System) filter client-side. Tapping a notification marks it read instantly (optimistic); "Mark all read" calls `POST /api/notifications/read-all`. Unauthenticated users see an empty state prompting sign-in.
 - **Home header buttons** — the bell (notifications) and search icons in the Home tab header now navigate to Activity and Discover respectively; previously they were unwired and did nothing on tap.
 - **Emergency banner** — shown only when a real post has `isEmergency: true`, links to that post.
-- **Supabase connection** — `@supabase/supabase-js` installed in the API server; singleton client in `artifacts/api-server/src/lib/supabase.ts` using `SUPABASE_URL` / `SUPABASE_ANON_KEY` (Replit Secrets). Connects to an existing Supabase project (Profiles, Posts, Comments, Likes tables + storage buckets + Supabase Auth) without touching its schema. Verified live: `GET /api/supabase/ping` → `{ ok: true, latencyMs: 568 }`.
+- **Supabase (primary data store)** — all reads/writes go through Supabase (`supabaseAdmin` service role client). Auth is Supabase Auth (JWT Bearer tokens); the Express API proxies it so Expo never calls Supabase directly. Every mutation dual-writes to Replit Postgres as a background backup via `syncToReplit()`. Tables in use: `Profiles`, `Post`, `Comments`, `Likes`, `Bookmarks`, `Follows`, `Notifications`.
 
 ## What's intentionally not built yet
 
