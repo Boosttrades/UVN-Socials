@@ -1,15 +1,15 @@
 import { Router, type IRouter } from "express";
+import { supabaseAdmin } from "../lib/supabase";
 import {
   db,
   postsTable,
-  usersTable,
   commentsTable,
   postLikesTable,
   postBookmarksTable,
+  followsTable,
   createPostSchema,
   createCommentSchema,
 } from "@workspace/db";
-import { and, desc, eq, lt, or, sql } from "drizzle-orm";
 import { requireAuth, optionalAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -17,17 +17,14 @@ const router: IRouter = Router();
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
 
+/** Fire-and-forget background sync to Replit Postgres. */
+function syncToReplit(fn: () => Promise<void>): void {
+  fn().catch((err) =>
+    console.warn("[replit-sync] Background sync failed:", err?.message)
+  );
+}
+
 // ─── GET /api/posts ──────────────────────────────────────────────────────────
-// Public feed — newest first, paginated. No auth required to read, but if a
-// valid session is present we include this user's like/bookmark state per
-// post.
-//
-// Pagination is keyset-based (not offset-based) so it stays correct even as
-// new posts are inserted while a client is paging through: the cursor is
-// `<createdAt ISO>_<id>` of the last row seen. Pass `?limit=20` to control
-// page size and `?cursor=...` (from the previous response's `nextCursor`) to
-// fetch the next page. The response omits `nextCursor` (sets it to null)
-// once there are no more rows.
 
 router.get("/", optionalAuth, async (req, res) => {
   const currentUser = (req as any).currentUser as { id: string } | undefined;
@@ -37,64 +34,114 @@ router.get("/", optionalAuth, async (req, res) => {
     Math.max(1, parseInt(String(req.query.limit ?? DEFAULT_PAGE_SIZE), 10) || DEFAULT_PAGE_SIZE)
   );
 
-  let cursorFilter;
+  // Build paginated query against Supabase
+  let query = supabaseAdmin
+    .from("Post")
+    .select(
+      `id, type, category, headline, text, image_url, is_emergency, shares_count, created_at,
+       author:Profiles!user_id(Id, name, username)`
+    )
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit + 1);
+
+  // Keyset cursor: `<createdAt ISO>_<id>`
   const rawCursor = typeof req.query.cursor === "string" ? req.query.cursor : undefined;
   if (rawCursor) {
-    const sepIndex = rawCursor.lastIndexOf("_");
-    const cursorCreatedAt = sepIndex >= 0 ? rawCursor.slice(0, sepIndex) : undefined;
-    const cursorId = sepIndex >= 0 ? rawCursor.slice(sepIndex + 1) : undefined;
-    const parsedDate = cursorCreatedAt ? new Date(cursorCreatedAt) : undefined;
-    if (parsedDate && !isNaN(parsedDate.getTime()) && cursorId) {
-      cursorFilter = or(
-        lt(postsTable.createdAt, parsedDate),
-        and(eq(postsTable.createdAt, parsedDate), lt(postsTable.id, cursorId))
+    const sep = rawCursor.lastIndexOf("_");
+    const cursorCreatedAt = sep >= 0 ? rawCursor.slice(0, sep) : undefined;
+    const cursorId = sep >= 0 ? rawCursor.slice(sep + 1) : undefined;
+    if (cursorCreatedAt && cursorId && !isNaN(new Date(cursorCreatedAt).getTime())) {
+      query = query.or(
+        `created_at.lt.${cursorCreatedAt},and(created_at.eq.${cursorCreatedAt},id.lt.${cursorId})`
       );
     }
   }
 
-  const rows = await db
-    .select({
-      id: postsTable.id,
-      type: postsTable.type,
-      category: postsTable.category,
-      headline: postsTable.headline,
-      body: postsTable.body,
-      imageUrl: postsTable.imageUrl,
-      isEmergency: postsTable.isEmergency,
-      sharesCount: postsTable.sharesCount,
-      createdAt: postsTable.createdAt,
-      author: {
-        id: usersTable.id,
-        name: usersTable.name,
-        username: usersTable.username,
-      },
-      likesCount: sql<number>`(select count(*)::int from ${postLikesTable} where ${postLikesTable.postId} = ${postsTable.id})`,
-      commentsCount: sql<number>`(select count(*)::int from ${commentsTable} where ${commentsTable.postId} = ${postsTable.id})`,
-      isLiked: currentUser
-        ? sql<boolean>`exists(select 1 from ${postLikesTable} where ${postLikesTable.postId} = ${postsTable.id} and ${postLikesTable.userId} = ${currentUser.id})`
-        : sql<boolean>`false`,
-      isBookmarked: currentUser
-        ? sql<boolean>`exists(select 1 from ${postBookmarksTable} where ${postBookmarksTable.postId} = ${postsTable.id} and ${postBookmarksTable.userId} = ${currentUser.id})`
-        : sql<boolean>`false`,
-    })
-    .from(postsTable)
-    .innerJoin(usersTable, eq(postsTable.authorId, usersTable.id))
-    .where(cursorFilter)
-    .orderBy(desc(postsTable.createdAt), desc(postsTable.id))
-    .limit(limit + 1);
+  const { data: rawPosts, error: postsError } = await query;
+  if (postsError) {
+    res.status(500).json({ error: "Failed to fetch posts" });
+    return;
+  }
 
-  const hasMore = rows.length > limit;
-  const page = hasMore ? rows.slice(0, limit) : rows;
-  const last = page[page.length - 1];
-  const nextCursor = hasMore && last ? `${new Date(last.createdAt).toISOString()}_${last.id}` : null;
+  const hasMore = (rawPosts?.length ?? 0) > limit;
+  const page = (rawPosts ?? []).slice(0, limit);
 
-  res.json({ posts: page, nextCursor });
+  if (page.length === 0) {
+    res.json({ posts: [], nextCursor: null });
+    return;
+  }
+
+  const postIds = page.map((p: any) => p.id);
+
+  // Batch-fetch counts and per-user state in parallel
+  const [
+    { data: allLikes },
+    { data: allComments },
+    { data: userLikes },
+    { data: userBookmarks },
+  ] = await Promise.all([
+    supabaseAdmin.from("Likes").select("post_id").in("post_id", postIds),
+    supabaseAdmin.from("Comments").select("post_id").in("post_id", postIds),
+    currentUser
+      ? supabaseAdmin
+          .from("Likes")
+          .select("post_id")
+          .eq("user_id", currentUser.id)
+          .in("post_id", postIds)
+      : Promise.resolve({ data: [] }),
+    currentUser
+      ? supabaseAdmin
+          .from("Bookmarks")
+          .select("post_id")
+          .eq("user_id", currentUser.id)
+          .in("post_id", postIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  // Build lookup maps
+  const likesCountMap = new Map<string, number>();
+  const commentsCountMap = new Map<string, number>();
+  for (const l of allLikes ?? []) {
+    likesCountMap.set(l.post_id, (likesCountMap.get(l.post_id) ?? 0) + 1);
+  }
+  for (const c of allComments ?? []) {
+    commentsCountMap.set(c.post_id, (commentsCountMap.get(c.post_id) ?? 0) + 1);
+  }
+  const likedSet = new Set((userLikes ?? []).map((l: any) => l.post_id));
+  const bookmarkedSet = new Set((userBookmarks ?? []).map((b: any) => b.post_id));
+
+  const posts = page.map((p: any) => ({
+    id: p.id,
+    type: p.type ?? "update",
+    category: p.category ?? null,
+    headline: p.headline ?? p.text ?? "",
+    body: p.text ?? null,
+    imageUrl: p.image_url ?? null,
+    isEmergency: p.is_emergency ?? false,
+    sharesCount: p.shares_count ?? 0,
+    createdAt: p.created_at,
+    author: {
+      id: p.author?.Id ?? "",
+      name: p.author?.name ?? "",
+      username: p.author?.username ?? "",
+    },
+    likesCount: likesCountMap.get(p.id) ?? 0,
+    commentsCount: commentsCountMap.get(p.id) ?? 0,
+    isLiked: likedSet.has(p.id),
+    isBookmarked: bookmarkedSet.has(p.id),
+  }));
+
+  const last = posts[posts.length - 1];
+  const nextCursor =
+    hasMore && last
+      ? `${new Date(last.createdAt).toISOString()}_${last.id}`
+      : null;
+
+  res.json({ posts, nextCursor });
 });
 
 // ─── POST /api/posts ──────────────────────────────────────────────────────────
-// Create a post — requires auth. Author is always the logged-in user.
-// Accepts an optional imageUrl, which must already be uploaded via the
-// object storage upload flow (see /api/storage/uploads/request-url).
 
 router.post("/", requireAuth, async (req, res) => {
   const parsed = createPostSchema.safeParse(req.body);
@@ -105,9 +152,30 @@ router.post("/", requireAuth, async (req, res) => {
 
   const currentUser = (req as any).currentUser;
 
-  const [post] = await db
-    .insert(postsTable)
-    .values({
+  const { data: post, error } = await supabaseAdmin
+    .from("Post")
+    .insert({
+      user_id: currentUser.id,
+      headline: parsed.data.headline,
+      text: parsed.data.body ?? null,
+      image_url: parsed.data.imageUrl ?? null,
+      type: parsed.data.type,
+      category: parsed.data.category ?? null,
+      is_emergency: parsed.data.isEmergency ?? false,
+      shares_count: 0,
+    })
+    .select()
+    .single();
+
+  if (error || !post) {
+    res.status(500).json({ error: "Failed to create post" });
+    return;
+  }
+
+  // Background: sync to Replit Postgres
+  syncToReplit(async () => {
+    await db.insert(postsTable).values({
+      id: post.id,
       authorId: currentUser.id,
       type: parsed.data.type,
       category: parsed.data.category,
@@ -115,191 +183,255 @@ router.post("/", requireAuth, async (req, res) => {
       body: parsed.data.body,
       imageUrl: parsed.data.imageUrl,
       isEmergency: parsed.data.isEmergency ?? false,
-    })
-    .returning();
+    }).onConflictDoNothing();
+  });
 
   res.status(201).json({
     post: {
-      ...post,
-      likesCount: 0,
-      commentsCount: 0,
-      isLiked: false,
-      isBookmarked: false,
+      id: post.id,
+      type: post.type ?? "update",
+      category: post.category ?? null,
+      headline: post.headline ?? post.text ?? "",
+      body: post.text ?? null,
+      imageUrl: post.image_url ?? null,
+      isEmergency: post.is_emergency ?? false,
+      sharesCount: 0,
+      createdAt: post.created_at,
       author: {
         id: currentUser.id,
         name: currentUser.name,
         username: currentUser.username,
       },
+      likesCount: 0,
+      commentsCount: 0,
+      isLiked: false,
+      isBookmarked: false,
     },
   });
 });
 
 // ─── DELETE /api/posts/:id ────────────────────────────────────────────────────
-// Only the author can delete their own post.
 
 router.delete("/:id", requireAuth, async (req, res) => {
   const currentUser = (req as any).currentUser;
   const id = String(req.params.id);
 
-  const [existing] = await db.select().from(postsTable).where(eq(postsTable.id, id)).limit(1);
+  const { data: existing } = await supabaseAdmin
+    .from("Post")
+    .select("id, user_id")
+    .eq("id", id)
+    .maybeSingle();
 
   if (!existing) {
     res.status(404).json({ error: "Post not found" });
     return;
   }
 
-  if (existing.authorId !== currentUser.id) {
+  if (existing.user_id !== currentUser.id) {
     res.status(403).json({ error: "You can only delete your own posts" });
     return;
   }
 
-  await db.delete(postsTable).where(eq(postsTable.id, id));
+  await supabaseAdmin.from("Post").delete().eq("id", id);
+
+  syncToReplit(async () => {
+    const { eq } = await import("drizzle-orm");
+    await db.delete(postsTable).where(eq(postsTable.id, id));
+  });
+
   res.json({ message: "Post deleted" });
 });
 
 // ─── POST /api/posts/:id/like ────────────────────────────────────────────────
-// Toggle a like for the current user. Returns the new state + total count.
 
 router.post("/:id/like", requireAuth, async (req, res) => {
   const currentUser = (req as any).currentUser;
   const postId = String(req.params.id);
 
-  const [post] = await db.select({ id: postsTable.id }).from(postsTable).where(eq(postsTable.id, postId)).limit(1);
+  const { data: post } = await supabaseAdmin
+    .from("Post")
+    .select("id")
+    .eq("id", postId)
+    .maybeSingle();
+
   if (!post) {
     res.status(404).json({ error: "Post not found" });
     return;
   }
 
-  const [existing] = await db
-    .select()
-    .from(postLikesTable)
-    .where(and(eq(postLikesTable.postId, postId), eq(postLikesTable.userId, currentUser.id)))
-    .limit(1);
+  const { data: existing } = await supabaseAdmin
+    .from("Likes")
+    .select("id")
+    .eq("post_id", postId)
+    .eq("user_id", currentUser.id)
+    .maybeSingle();
 
   let liked: boolean;
   if (existing) {
-    await db.delete(postLikesTable).where(eq(postLikesTable.id, existing.id));
+    await supabaseAdmin.from("Likes").delete().eq("id", existing.id);
     liked = false;
   } else {
-    await db.insert(postLikesTable).values({ postId, userId: currentUser.id });
+    await supabaseAdmin.from("Likes").insert({ post_id: postId, user_id: currentUser.id });
     liked = true;
   }
 
-  const [{ count }] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(postLikesTable)
-    .where(eq(postLikesTable.postId, postId));
+  const { count } = await supabaseAdmin
+    .from("Likes")
+    .select("*", { count: "exact", head: true })
+    .eq("post_id", postId);
 
-  res.json({ liked, likesCount: count });
+  syncToReplit(async () => {
+    const { and, eq } = await import("drizzle-orm");
+    if (liked) {
+      await db.insert(postLikesTable).values({ postId, userId: currentUser.id }).onConflictDoNothing();
+    } else {
+      await db.delete(postLikesTable).where(
+        and(eq(postLikesTable.postId, postId), eq(postLikesTable.userId, currentUser.id))
+      );
+    }
+  });
+
+  res.json({ liked, likesCount: count ?? 0 });
 });
 
 // ─── POST /api/posts/:id/bookmark ────────────────────────────────────────────
-// Toggle a bookmark (save) for the current user.
 
 router.post("/:id/bookmark", requireAuth, async (req, res) => {
   const currentUser = (req as any).currentUser;
   const postId = String(req.params.id);
 
-  const [post] = await db.select({ id: postsTable.id }).from(postsTable).where(eq(postsTable.id, postId)).limit(1);
+  const { data: post } = await supabaseAdmin
+    .from("Post")
+    .select("id")
+    .eq("id", postId)
+    .maybeSingle();
+
   if (!post) {
     res.status(404).json({ error: "Post not found" });
     return;
   }
 
-  const [existing] = await db
-    .select()
-    .from(postBookmarksTable)
-    .where(and(eq(postBookmarksTable.postId, postId), eq(postBookmarksTable.userId, currentUser.id)))
-    .limit(1);
+  const { data: existing } = await supabaseAdmin
+    .from("Bookmarks")
+    .select("id")
+    .eq("post_id", postId)
+    .eq("user_id", currentUser.id)
+    .maybeSingle();
 
   let bookmarked: boolean;
   if (existing) {
-    await db.delete(postBookmarksTable).where(eq(postBookmarksTable.id, existing.id));
+    await supabaseAdmin.from("Bookmarks").delete().eq("id", existing.id);
     bookmarked = false;
   } else {
-    await db.insert(postBookmarksTable).values({ postId, userId: currentUser.id });
+    await supabaseAdmin.from("Bookmarks").insert({ post_id: postId, user_id: currentUser.id });
     bookmarked = true;
   }
+
+  syncToReplit(async () => {
+    const { and, eq } = await import("drizzle-orm");
+    if (bookmarked) {
+      await db.insert(postBookmarksTable).values({ postId, userId: currentUser.id }).onConflictDoNothing();
+    } else {
+      await db.delete(postBookmarksTable).where(
+        and(eq(postBookmarksTable.postId, postId), eq(postBookmarksTable.userId, currentUser.id))
+      );
+    }
+  });
 
   res.json({ bookmarked });
 });
 
 // ─── GET /api/posts/bookmarks/mine ───────────────────────────────────────────
-// Post ids the current user has bookmarked. Used to render the Saved tab.
 
 router.get("/bookmarks/mine", requireAuth, async (req, res) => {
   const currentUser = (req as any).currentUser;
 
-  const rows = await db
-    .select({ postId: postBookmarksTable.postId })
-    .from(postBookmarksTable)
-    .where(eq(postBookmarksTable.userId, currentUser.id));
+  const { data: rows } = await supabaseAdmin
+    .from("Bookmarks")
+    .select("post_id")
+    .eq("user_id", currentUser.id);
 
-  res.json({ postIds: rows.map((r: { postId: string }) => r.postId) });
+  res.json({ postIds: (rows ?? []).map((r: any) => r.post_id) });
 });
 
 // ─── POST /api/posts/:id/share ───────────────────────────────────────────────
-// Increment the share counter. No auth required — sharing (via the native
-// share sheet) doesn't require a session, it just tracks that a share happened.
 
 router.post("/:id/share", async (req, res) => {
   const postId = String(req.params.id);
 
-  const [post] = await db.select({ id: postsTable.id }).from(postsTable).where(eq(postsTable.id, postId)).limit(1);
+  const { data: post } = await supabaseAdmin
+    .from("Post")
+    .select("id, shares_count")
+    .eq("id", postId)
+    .maybeSingle();
+
   if (!post) {
     res.status(404).json({ error: "Post not found" });
     return;
   }
 
-  const [updated] = await db
-    .update(postsTable)
-    .set({ sharesCount: sql`${postsTable.sharesCount} + 1` })
-    .where(eq(postsTable.id, postId))
-    .returning({ sharesCount: postsTable.sharesCount });
+  const newCount = (post.shares_count ?? 0) + 1;
+  await supabaseAdmin
+    .from("Post")
+    .update({ shares_count: newCount })
+    .eq("id", postId);
 
-  res.json({ sharesCount: updated.sharesCount });
+  res.json({ sharesCount: newCount });
 });
 
 // ─── GET /api/posts/:postId/comments ─────────────────────────────────────────
-// Public — newest first, matching the client's previous local-state ordering.
 
 router.get("/:postId/comments", async (req, res) => {
   const postId = String(req.params.postId);
 
-  const [post] = await db.select({ id: postsTable.id }).from(postsTable).where(eq(postsTable.id, postId)).limit(1);
+  const { data: post } = await supabaseAdmin
+    .from("Post")
+    .select("id")
+    .eq("id", postId)
+    .maybeSingle();
+
   if (!post) {
     res.status(404).json({ error: "Post not found" });
     return;
   }
 
-  const rows = await db
-    .select({
-      id: commentsTable.id,
-      postId: commentsTable.postId,
-      body: commentsTable.body,
-      replyToHandle: commentsTable.replyToHandle,
-      createdAt: commentsTable.createdAt,
-      author: {
-        id: usersTable.id,
-        name: usersTable.name,
-        username: usersTable.username,
-      },
-    })
-    .from(commentsTable)
-    .innerJoin(usersTable, eq(commentsTable.authorId, usersTable.id))
-    .where(eq(commentsTable.postId, postId))
-    .orderBy(desc(commentsTable.createdAt));
+  const { data: rows } = await supabaseAdmin
+    .from("Comments")
+    .select(`
+      id, post_id, text, reply_to_handle, created_at,
+      author:Profiles!user_id(Id, name, username)
+    `)
+    .eq("post_id", postId)
+    .order("created_at", { ascending: false });
 
-  res.json({ comments: rows });
+  const comments = (rows ?? []).map((c: any) => ({
+    id: c.id,
+    postId: c.post_id,
+    body: c.text,
+    replyToHandle: c.reply_to_handle ?? null,
+    createdAt: c.created_at,
+    author: {
+      id: c.author?.Id ?? "",
+      name: c.author?.name ?? "",
+      username: c.author?.username ?? "",
+    },
+  }));
+
+  res.json({ comments });
 });
 
 // ─── POST /api/posts/:postId/comments ────────────────────────────────────────
-// Create a comment — requires auth. Author is always the logged-in user.
 
 router.post("/:postId/comments", requireAuth, async (req, res) => {
   const postId = String(req.params.postId);
+  const currentUser = (req as any).currentUser;
 
-  const [post] = await db.select({ id: postsTable.id }).from(postsTable).where(eq(postsTable.id, postId)).limit(1);
+  const { data: post } = await supabaseAdmin
+    .from("Post")
+    .select("id")
+    .eq("id", postId)
+    .maybeSingle();
+
   if (!post) {
     res.status(404).json({ error: "Post not found" });
     return;
@@ -311,21 +443,39 @@ router.post("/:postId/comments", requireAuth, async (req, res) => {
     return;
   }
 
-  const currentUser = (req as any).currentUser;
+  const { data: comment, error } = await supabaseAdmin
+    .from("Comments")
+    .insert({
+      post_id: postId,
+      user_id: currentUser.id,
+      text: parsed.data.body,
+      reply_to_handle: parsed.data.replyToHandle ?? null,
+    })
+    .select()
+    .single();
 
-  const [comment] = await db
-    .insert(commentsTable)
-    .values({
+  if (error || !comment) {
+    res.status(500).json({ error: "Failed to create comment" });
+    return;
+  }
+
+  syncToReplit(async () => {
+    await db.insert(commentsTable).values({
+      id: comment.id,
       postId,
       authorId: currentUser.id,
       body: parsed.data.body,
       replyToHandle: parsed.data.replyToHandle,
-    })
-    .returning();
+    }).onConflictDoNothing();
+  });
 
   res.status(201).json({
     comment: {
-      ...comment,
+      id: comment.id,
+      postId: comment.post_id,
+      body: comment.text,
+      replyToHandle: comment.reply_to_handle ?? null,
+      createdAt: comment.created_at,
       author: {
         id: currentUser.id,
         name: currentUser.name,

@@ -41,29 +41,63 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const TOKEN_KEY = '@ughelli_vibes/session_token';
+const REFRESH_TOKEN_KEY = '@ughelli_vibes/refresh_token';
 
 // ─── Provider ────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Restore session from storage on mount
+  // Restore session from storage on mount — handles expired access tokens by
+  // attempting a silent refresh before giving up and clearing the session.
   useEffect(() => {
     async function restoreSession() {
       try {
-        const stored = await AsyncStorage.getItem(TOKEN_KEY);
-        if (!stored) return;
+        const [[, storedToken], [, storedRefreshToken]] = await AsyncStorage.multiGet([
+          TOKEN_KEY,
+          REFRESH_TOKEN_KEY,
+        ]);
 
-        const data = await apiRequest<{ user: AuthUser }>('/auth/me', {
-          token: stored,
-        });
-        setToken(stored);
-        setUser(data.user);
-      } catch {
-        // Token expired or invalid — clear it
-        await AsyncStorage.removeItem(TOKEN_KEY);
+        if (!storedToken) return;
+
+        // Try the stored access token first
+        try {
+          const data = await apiRequest<{ user: AuthUser }>('/auth/me', {
+            token: storedToken,
+          });
+          setToken(storedToken);
+          setRefreshToken(storedRefreshToken);
+          setUser(data.user);
+          return;
+        } catch (err) {
+          // If 401 and we have a refresh token, try to silently refresh
+          if (err instanceof ApiError && err.status === 401 && storedRefreshToken) {
+            try {
+              const refreshed = await apiRequest<{ token: string; refreshToken: string }>(
+                '/auth/refresh',
+                { method: 'POST', body: { refreshToken: storedRefreshToken } }
+              );
+              const data = await apiRequest<{ user: AuthUser }>('/auth/me', {
+                token: refreshed.token,
+              });
+              await AsyncStorage.multiSet([
+                [TOKEN_KEY, refreshed.token],
+                [REFRESH_TOKEN_KEY, refreshed.refreshToken],
+              ]);
+              setToken(refreshed.token);
+              setRefreshToken(refreshed.refreshToken);
+              setUser(data.user);
+              return;
+            } catch {
+              // Refresh also failed — fall through to clear session
+            }
+          }
+          // Token and refresh both invalid — clear storage
+          await AsyncStorage.multiRemove([TOKEN_KEY, REFRESH_TOKEN_KEY]);
+        }
       } finally {
         setIsLoading(false);
       }
@@ -73,12 +107,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(async (identifier: string, password: string) => {
-    const data = await apiRequest<{ token: string; user: AuthUser }>('/auth/login', {
+    const data = await apiRequest<{
+      token: string;
+      refreshToken: string;
+      user: AuthUser;
+    }>('/auth/login', {
       method: 'POST',
       body: { identifier, password },
     });
-    await AsyncStorage.setItem(TOKEN_KEY, data.token);
+    await AsyncStorage.multiSet([
+      [TOKEN_KEY, data.token],
+      [REFRESH_TOKEN_KEY, data.refreshToken],
+    ]);
     setToken(data.token);
+    setRefreshToken(data.refreshToken);
     setUser(data.user);
   }, []);
 
@@ -107,10 +149,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const resetPassword = useCallback(async (token: string, password: string) => {
+  const resetPassword = useCallback(async (tok: string, password: string) => {
     return apiRequest<{ message: string }>('/auth/reset-password', {
       method: 'POST',
-      body: { token, password },
+      body: { token: tok, password },
     });
   }, []);
 
@@ -136,8 +178,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Best-effort — always clear locally
     }
-    await AsyncStorage.removeItem(TOKEN_KEY);
+    await AsyncStorage.multiRemove([TOKEN_KEY, REFRESH_TOKEN_KEY]);
     setToken(null);
+    setRefreshToken(null);
     setUser(null);
   }, [token]);
 

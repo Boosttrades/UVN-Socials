@@ -1,14 +1,18 @@
 import { Router, type IRouter } from "express";
-import { db, usersTable, postsTable, followsTable } from "@workspace/db";
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { supabaseAdmin } from "../lib/supabase";
+import { db, followsTable } from "@workspace/db";
 import { requireAuth, optionalAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
+/** Fire-and-forget background sync to Replit Postgres. */
+function syncToReplit(fn: () => Promise<void>): void {
+  fn().catch((err) =>
+    console.warn("[replit-sync] Background sync failed:", err?.message)
+  );
+}
+
 // ─── GET /api/users/search?q= ────────────────────────────────────────────────
-// People search by name or username (case-insensitive, partial match).
-// Registered before the `/:username` route below so "search" is never
-// mistaken for a username lookup.
 
 router.get("/search", optionalAuth, async (req, res) => {
   const currentUser = (req as any).currentUser as { id: string } | undefined;
@@ -19,143 +23,164 @@ router.get("/search", optionalAuth, async (req, res) => {
     return;
   }
 
-  const pattern = `%${q}%`;
-  const results = await db
-    .select({ id: usersTable.id, name: usersTable.name, username: usersTable.username })
-    .from(usersTable)
-    .where(or(sql`${usersTable.name} ILIKE ${pattern}`, sql`${usersTable.username} ILIKE ${pattern}`))
-    .orderBy(usersTable.name)
+  // Supabase ilike filter for partial name/username match
+  const { data: results } = await supabaseAdmin
+    .from("Profiles")
+    .select("Id, name, username")
+    .or(`name.ilike.%${q}%,username.ilike.%${q}%`)
+    .order("name")
     .limit(20);
 
-  let followingIds = new Set<string>();
-  if (currentUser && results.length > 0) {
-    const rows = await db
-      .select({ followingId: followsTable.followingId })
-      .from(followsTable)
-      .where(
-        and(
-          eq(followsTable.followerId, currentUser.id),
-          inArray(
-            followsTable.followingId,
-            results.map((u) => u.id)
-          )
-        )
-      );
-    followingIds = new Set(rows.map((r) => r.followingId));
+  if (!results || results.length === 0) {
+    res.json({ users: [] });
+    return;
+  }
+
+  // Determine which of these users the caller follows
+  let followingSet = new Set<string>();
+  if (currentUser) {
+    const { data: following } = await supabaseAdmin
+      .from("Follows")
+      .select("following_id")
+      .eq("follower_id", currentUser.id)
+      .in("following_id", results.map((u: any) => u.Id));
+    followingSet = new Set((following ?? []).map((f: any) => f.following_id));
   }
 
   res.json({
-    users: results.map((u) => ({
-      id: u.id,
-      name: u.name,
-      username: u.username,
-      isFollowing: followingIds.has(u.id),
-      isMe: currentUser?.id === u.id,
+    users: results.map((u: any) => ({
+      id: u.Id,
+      name: u.name ?? "",
+      username: u.username ?? "",
+      isFollowing: followingSet.has(u.Id),
+      isMe: currentUser?.id === u.Id,
     })),
   });
 });
 
 // ─── GET /api/users/:username ────────────────────────────────────────────────
-// Public profile lookup by username — includes follower/following/post counts
-// and, if the caller is authenticated, whether they follow this user.
 
 router.get("/:username", optionalAuth, async (req, res) => {
   const currentUser = (req as any).currentUser as { id: string } | undefined;
   const username = String(req.params.username);
 
-  const [user] = await db
-    .select({ id: usersTable.id, name: usersTable.name, username: usersTable.username })
-    .from(usersTable)
-    .where(eq(usersTable.username, username))
-    .limit(1);
+  const { data: user } = await supabaseAdmin
+    .from("Profiles")
+    .select("Id, name, username, profile_image")
+    .eq("username", username)
+    .maybeSingle();
 
   if (!user) {
     res.status(404).json({ error: "User not found" });
     return;
   }
 
-  const [{ followersCount }] = await db
-    .select({ followersCount: sql<number>`count(*)::int` })
-    .from(followsTable)
-    .where(eq(followsTable.followingId, user.id));
-
-  const [{ followingCount }] = await db
-    .select({ followingCount: sql<number>`count(*)::int` })
-    .from(followsTable)
-    .where(eq(followsTable.followerId, user.id));
-
-  const [{ postsCount }] = await db
-    .select({ postsCount: sql<number>`count(*)::int` })
-    .from(postsTable)
-    .where(eq(postsTable.authorId, user.id));
-
-  let isFollowing = false;
-  if (currentUser) {
-    const [existing] = await db
-      .select()
-      .from(followsTable)
-      .where(and(eq(followsTable.followerId, currentUser.id), eq(followsTable.followingId, user.id)))
-      .limit(1);
-    isFollowing = !!existing;
-  }
+  // Fetch counts and follow status in parallel
+  const [
+    { count: followersCount },
+    { count: followingCount },
+    { count: postsCount },
+    followCheck,
+  ] = await Promise.all([
+    supabaseAdmin
+      .from("Follows")
+      .select("*", { count: "exact", head: true })
+      .eq("following_id", user.Id),
+    supabaseAdmin
+      .from("Follows")
+      .select("*", { count: "exact", head: true })
+      .eq("follower_id", user.Id),
+    supabaseAdmin
+      .from("Post")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.Id),
+    currentUser
+      ? supabaseAdmin
+          .from("Follows")
+          .select("id")
+          .eq("follower_id", currentUser.id)
+          .eq("following_id", user.Id)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
 
   res.json({
     user: {
-      id: user.id,
-      name: user.name,
+      id: user.Id,
+      name: user.name ?? "",
       username: user.username,
-      followersCount,
-      followingCount,
-      postsCount,
-      isFollowing,
+      profileImage: user.profile_image ?? null,
+      followersCount: followersCount ?? 0,
+      followingCount: followingCount ?? 0,
+      postsCount: postsCount ?? 0,
+      isFollowing: !!(followCheck as any)?.data,
     },
   });
 });
 
 // ─── POST /api/users/:username/follow ────────────────────────────────────────
-// Toggle following this user. Requires auth. Cannot follow yourself.
 
 router.post("/:username/follow", requireAuth, async (req, res) => {
   const currentUser = (req as any).currentUser;
   const username = String(req.params.username);
 
-  const [target] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(eq(usersTable.username, username))
-    .limit(1);
+  const { data: target } = await supabaseAdmin
+    .from("Profiles")
+    .select("Id")
+    .eq("username", username)
+    .maybeSingle();
 
   if (!target) {
     res.status(404).json({ error: "User not found" });
     return;
   }
 
-  if (target.id === currentUser.id) {
+  if (target.Id === currentUser.id) {
     res.status(400).json({ error: "You cannot follow yourself" });
     return;
   }
 
-  const [existing] = await db
-    .select()
-    .from(followsTable)
-    .where(and(eq(followsTable.followerId, currentUser.id), eq(followsTable.followingId, target.id)))
-    .limit(1);
+  const { data: existing } = await supabaseAdmin
+    .from("Follows")
+    .select("id")
+    .eq("follower_id", currentUser.id)
+    .eq("following_id", target.Id)
+    .maybeSingle();
 
   let following: boolean;
   if (existing) {
-    await db.delete(followsTable).where(eq(followsTable.id, existing.id));
+    await supabaseAdmin.from("Follows").delete().eq("id", existing.id);
     following = false;
   } else {
-    await db.insert(followsTable).values({ followerId: currentUser.id, followingId: target.id });
+    await supabaseAdmin
+      .from("Follows")
+      .insert({ follower_id: currentUser.id, following_id: target.Id });
     following = true;
   }
 
-  const [{ followersCount }] = await db
-    .select({ followersCount: sql<number>`count(*)::int` })
-    .from(followsTable)
-    .where(eq(followsTable.followingId, target.id));
+  const { count: followersCount } = await supabaseAdmin
+    .from("Follows")
+    .select("*", { count: "exact", head: true })
+    .eq("following_id", target.Id);
 
-  res.json({ following, followersCount });
+  syncToReplit(async () => {
+    const { and, eq } = await import("drizzle-orm");
+    if (following) {
+      await db
+        .insert(followsTable)
+        .values({ followerId: currentUser.id, followingId: target.Id })
+        .onConflictDoNothing();
+    } else {
+      await db.delete(followsTable).where(
+        and(
+          eq(followsTable.followerId, currentUser.id),
+          eq(followsTable.followingId, target.Id)
+        )
+      );
+    }
+  });
+
+  res.json({ following, followersCount: followersCount ?? 0 });
 });
 
 export default router;

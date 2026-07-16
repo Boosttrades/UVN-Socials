@@ -1,60 +1,77 @@
 import { type NextFunction, type Request, type Response } from "express";
-import { db, sessionsTable, usersTable } from "@workspace/db";
-import { and, eq, gt } from "drizzle-orm";
+import { supabaseAdmin } from "../lib/supabase";
 
+export type AuthUser = {
+  id: string;
+  name: string;
+  username: string;
+  email: string;
+  emailVerified: boolean;
+  profileUpdatedAt: string | null;
+  createdAt: string;
+};
+
+/**
+ * Validate a Supabase JWT and return the user's profile from the Profiles
+ * table. Returns null if the token is invalid or the profile is missing.
+ */
+async function resolveUser(token: string): Promise<AuthUser | null> {
+  // Validate the JWT via Supabase Auth (does not mutate client state)
+  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !user) return null;
+
+  // Fetch full profile from Supabase Profiles table
+  const { data: profile } = await supabaseAdmin
+    .from("Profiles")
+    .select("Id, name, username, email, profile_updated_at, created_at")
+    .eq("Id", user.id)
+    .maybeSingle();
+
+  if (!profile) return null;
+
+  return {
+    id: profile.Id,
+    name: profile.name ?? user.user_metadata?.name ?? "",
+    username: profile.username ?? "",
+    email: profile.email ?? user.email ?? "",
+    emailVerified: !!user.email_confirmed_at,
+    profileUpdatedAt: profile.profile_updated_at ?? null,
+    createdAt: profile.created_at ?? user.created_at,
+  };
+}
+
+/**
+ * Require a valid Supabase JWT. Attaches `currentUser` and `sessionToken` to
+ * the request or responds 401.
+ */
 export async function requireAuth(
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
   const authHeader = req.headers["authorization"];
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!authHeader?.startsWith("Bearer ")) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
   const token = authHeader.slice(7);
-  const now = new Date();
+  const user = await resolveUser(token);
 
-  const rows = await db
-    .select({
-      session: sessionsTable,
-      user: {
-        id: usersTable.id,
-        name: usersTable.name,
-        username: usersTable.username,
-        email: usersTable.email,
-        emailVerified: usersTable.emailVerified,
-        profileUpdatedAt: usersTable.profileUpdatedAt,
-        createdAt: usersTable.createdAt,
-      },
-    })
-    .from(sessionsTable)
-    .innerJoin(usersTable, eq(sessionsTable.userId, usersTable.id))
-    .where(
-      and(
-        eq(sessionsTable.token, token),
-        gt(sessionsTable.expiresAt, now)
-      )
-    )
-    .limit(1);
-
-  if (rows.length === 0) {
+  if (!user) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
-  // Attach user + token to request for downstream handlers
-  (req as any).currentUser = rows[0].user;
+  (req as any).currentUser = user;
   (req as any).sessionToken = token;
   next();
 }
 
 /**
- * Like requireAuth, but never blocks the request. If a valid Bearer token is
- * present, attaches `currentUser`/`sessionToken` to the request; otherwise
- * continues unauthenticated. Use for public endpoints whose response shape
- * changes when a caller happens to be logged in (e.g. feed like/bookmark state).
+ * Like requireAuth but never blocks the request. Attaches the user to the
+ * request only if a valid token is present — allows public endpoints to
+ * optionally enrich responses with per-user state.
  */
 export async function optionalAuth(
   req: Request,
@@ -62,39 +79,16 @@ export async function optionalAuth(
   next: NextFunction
 ): Promise<void> {
   const authHeader = req.headers["authorization"];
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!authHeader?.startsWith("Bearer ")) {
     next();
     return;
   }
 
   const token = authHeader.slice(7);
-  const now = new Date();
+  const user = await resolveUser(token);
 
-  const rows = await db
-    .select({
-      session: sessionsTable,
-      user: {
-        id: usersTable.id,
-        name: usersTable.name,
-        username: usersTable.username,
-        email: usersTable.email,
-        emailVerified: usersTable.emailVerified,
-        profileUpdatedAt: usersTable.profileUpdatedAt,
-        createdAt: usersTable.createdAt,
-      },
-    })
-    .from(sessionsTable)
-    .innerJoin(usersTable, eq(sessionsTable.userId, usersTable.id))
-    .where(
-      and(
-        eq(sessionsTable.token, token),
-        gt(sessionsTable.expiresAt, now)
-      )
-    )
-    .limit(1);
-
-  if (rows.length > 0) {
-    (req as any).currentUser = rows[0].user;
+  if (user) {
+    (req as any).currentUser = user;
     (req as any).sessionToken = token;
   }
 

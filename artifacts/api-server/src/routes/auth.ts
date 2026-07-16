@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import { Router, type IRouter } from "express";
-import { hash, verify as verifyPassword } from "@node-rs/argon2";
-import { db, sessionsTable, usersTable } from "@workspace/db";
+import { supabaseAdmin, signInWithPassword, refreshAccessToken, revokeToken } from "../lib/supabase";
+import { db, usersTable } from "@workspace/db";
 import {
   forgotPasswordSchema,
   loginSchema,
@@ -9,84 +9,49 @@ import {
   signupSchema,
   updateProfileSchema,
 } from "@workspace/db/schema";
-import { and, eq, gt, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { sendPasswordResetEmail, sendVerificationEmail } from "../lib/email";
 import { requireAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
-// ─── helpers ────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const ARGON2_OPTIONS = {
-  algorithm: 2, // Argon2id
-  memoryCost: 65536, // 64 MiB
-  timeCost: 3,
-  parallelism: 1,
-};
-
-/**
- * Pre-computed dummy hash used to make login response time constant
- * regardless of whether the email exists in the database.
- * Without this, an attacker can enumerate valid emails by measuring
- * how long the server takes to respond.
- */
-let _dummyHash: string | null = null;
-async function getDummyHash(): Promise<string> {
-  if (!_dummyHash) {
-    _dummyHash = await hash("__ughelli_vibes_timing_dummy__", ARGON2_OPTIONS);
-  }
-  return _dummyHash;
+/** Fire-and-forget background sync to Replit Postgres (the backup copy). */
+function syncToReplit(fn: () => Promise<void>): void {
+  fn().catch((err) =>
+    console.warn("[replit-sync] Background sync failed:", err?.message)
+  );
 }
 
 function generateToken(bytes = 32): string {
   return randomBytes(bytes).toString("hex");
 }
 
-function sessionExpiresAt(): Date {
+function verificationExpiresAt(): Date {
   const d = new Date();
-  d.setDate(d.getDate() + 30); // 30-day sessions
+  d.setHours(d.getHours() + 24);
   return d;
 }
 
-function verificationExpiresAt(): Date {
+function resetExpiresAt(): Date {
   const d = new Date();
-  d.setHours(d.getHours() + 24); // 24-hour verification window
+  d.setHours(d.getHours() + 1);
   return d;
 }
 
 function getAppBaseUrl(req: any): string {
-  const proto = req.headers["x-forwarded-proto"] || "https";
-  const host = req.headers["x-forwarded-host"] || req.headers["host"];
+  const proto = req.headers["x-forwarded-proto"] ?? "https";
+  const host = req.headers["x-forwarded-host"] ?? req.headers["host"];
   return `${proto}://${host}`;
 }
 
-/**
- * Base URL of the mobile app's web build (not the API server) — used for
- * links that must open an interactive in-app screen, like password reset.
- */
 function getWebAppBaseUrl(): string {
   const domain = process.env.REPLIT_DEV_DOMAIN;
-  if (domain) {
-    return `https://${domain}`;
-  }
-  return "http://localhost:8000";
-}
-
-function computeResetTokenExpiresAt(): Date {
-  const d = new Date();
-  d.setHours(d.getHours() + 1); // 1-hour reset window
-  return d;
+  return domain ? `https://${domain}` : "http://localhost:8000";
 }
 
 const PROFILE_EDIT_COOLDOWN_DAYS = 14;
-
-function msUntilNextProfileEdit(profileUpdatedAt: Date | null): number {
-  if (!profileUpdatedAt) return 0;
-  const nextAllowed = new Date(profileUpdatedAt);
-  nextAllowed.setDate(nextAllowed.getDate() + PROFILE_EDIT_COOLDOWN_DAYS);
-  return nextAllowed.getTime() - Date.now();
-}
-
 const WRONG_CREDENTIALS_MSG = "Wrong email/username or password";
 
 // ─── POST /api/auth/signup ───────────────────────────────────────────────────
@@ -99,70 +64,82 @@ router.post("/signup", async (req, res) => {
   }
 
   const { name, username, email, password } = parsed.data;
+  const normalizedEmail = email.toLowerCase();
+  const normalizedUsername = username.toLowerCase();
 
-  // Check uniqueness
-  const [existingEmail] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(eq(usersTable.email, email.toLowerCase()))
-    .limit(1);
-
-  if (existingEmail) {
-    res.status(409).json({ error: "An account with this email already exists" });
-    return;
-  }
-
-  const [existingUsername] = await db
-    .select({ id: usersTable.id })
-    .from(usersTable)
-    .where(eq(usersTable.username, username.toLowerCase()))
-    .limit(1);
+  // Check username uniqueness in Supabase
+  const { data: existingUsername } = await supabaseAdmin
+    .from("Profiles")
+    .select("Id")
+    .eq("username", normalizedUsername)
+    .maybeSingle();
 
   if (existingUsername) {
     res.status(409).json({ error: "Username is already taken" });
     return;
   }
 
-  // Hash password with Argon2id
-  const passwordHash = await hash(password, ARGON2_OPTIONS);
+  // Create the auth user in Supabase (does NOT confirm email yet)
+  const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+    email: normalizedEmail,
+    password,
+    email_confirm: false,
+    user_metadata: { name, username: normalizedUsername },
+  });
 
-  // Generate email verification token
+  if (authError) {
+    if (authError.message?.toLowerCase().includes("already registered")) {
+      res.status(409).json({ error: "An account with this email already exists" });
+      return;
+    }
+    res.status(500).json({ error: "Failed to create account. Please try again." });
+    return;
+  }
+
+  const userId = authData.user.id;
+
+  // The DB trigger auto-creates the Profiles row. We upsert to fill in name
+  // and the custom verification token we'll email ourselves.
   const verificationToken = generateToken();
   const verificationTokenExpiresAt = verificationExpiresAt();
 
-  // Create user
-  const [user] = await db
-    .insert(usersTable)
-    .values({
-      name,
-      username: username.toLowerCase(),
-      email: email.toLowerCase(),
-      passwordHash,
-      emailVerified: false,
-      verificationToken,
-      verificationTokenExpiresAt,
-    })
-    .returning({
-      id: usersTable.id,
-      name: usersTable.name,
-      username: usersTable.username,
-      email: usersTable.email,
-    });
+  await supabaseAdmin.from("Profiles").upsert({
+    Id: userId,
+    username: normalizedUsername,
+    email: normalizedEmail,
+    name,
+    verification_token: verificationToken,
+    verification_token_expires_at: verificationTokenExpiresAt.toISOString(),
+  });
 
-  // Send verification email
+  // Send verification email via our Resend integration
   const verificationUrl = `${getAppBaseUrl(req)}/api/auth/verify?token=${verificationToken}`;
   try {
-    await sendVerificationEmail({ to: user.email, name: user.name, verificationUrl });
+    await sendVerificationEmail({ to: normalizedEmail, name, verificationUrl });
   } catch (err) {
-    // Don't fail account creation over an email-delivery hiccup (e.g. Resend
-    // test-mode restrictions before a sending domain is verified) — the
-    // account still exists and can use "resend verification" later.
     req.log?.error?.({ err }, "Failed to send verification email");
   }
 
+  // Background: mirror to Replit Postgres
+  syncToReplit(async () => {
+    await db
+      .insert(usersTable)
+      .values({
+        id: userId,
+        name,
+        username: normalizedUsername,
+        email: normalizedEmail,
+        passwordHash: "[SUPABASE_AUTH]", // auth is handled by Supabase
+        emailVerified: false,
+        verificationToken,
+        verificationTokenExpiresAt,
+      })
+      .onConflictDoNothing();
+  });
+
   res.status(201).json({
     message: "Account created! Check your email to verify your account.",
-    user,
+    user: { id: userId, name, username: normalizedUsername, email: normalizedEmail },
   });
 });
 
@@ -175,90 +152,107 @@ router.post("/login", async (req, res) => {
     return;
   }
 
-  const { identifier, password } = parsed.data;
-  const normalizedIdentifier = identifier.trim().toLowerCase();
+  let { identifier, password } = parsed.data;
+  identifier = identifier.trim().toLowerCase();
 
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(
-      or(
-        eq(usersTable.email, normalizedIdentifier),
-        eq(usersTable.username, normalizedIdentifier)
-      )
-    )
-    .limit(1);
+  // Resolve username → email (Supabase signIn only accepts email)
+  let email = identifier;
+  if (!identifier.includes("@")) {
+    const { data: profile } = await supabaseAdmin
+      .from("Profiles")
+      .select("email")
+      .eq("username", identifier)
+      .maybeSingle();
 
-  if (!user) {
-    // Run a dummy hash verify so response time is constant whether or not
-    // the account exists — prevents timing-based account enumeration.
-    await verifyPassword(await getDummyHash(), password).catch(() => {});
+    if (!profile) {
+      res.status(401).json({ error: WRONG_CREDENTIALS_MSG });
+      return;
+    }
+    email = profile.email;
+  }
+
+  // Authenticate via Supabase (stateless REST call)
+  let session: { access_token: string; refresh_token: string; user: any };
+  try {
+    session = await signInWithPassword(email, password);
+  } catch {
     res.status(401).json({ error: WRONG_CREDENTIALS_MSG });
     return;
   }
 
-  // Verify password with Argon2id
-  const passwordMatches = await verifyPassword(user.passwordHash, password);
-  if (!passwordMatches) {
-    res.status(401).json({ error: WRONG_CREDENTIALS_MSG });
-    return;
-  }
-
-  if (!user.emailVerified) {
+  // Check email verification status
+  if (!session.user.email_confirmed_at) {
+    // Revoke the session — unverified users must not stay signed in
+    await revokeToken(session.access_token);
     res.status(403).json({
       error: "Please verify your email before logging in.",
       code: "EMAIL_NOT_VERIFIED",
-      email: user.email,
+      email,
     });
     return;
   }
 
-  // Create session
-  const token = generateToken();
-  await db.insert(sessionsTable).values({
-    userId: user.id,
-    token,
-    expiresAt: sessionExpiresAt(),
-  });
+  // Fetch profile for the response shape the Expo app expects
+  const { data: profile } = await supabaseAdmin
+    .from("Profiles")
+    .select("Id, name, username, email, profile_updated_at, created_at")
+    .eq("Id", session.user.id)
+    .maybeSingle();
 
   res.json({
-    token,
+    token: session.access_token,
+    refreshToken: session.refresh_token,
     user: {
-      id: user.id,
-      name: user.name,
-      username: user.username,
-      email: user.email,
-      emailVerified: user.emailVerified,
-      profileUpdatedAt: user.profileUpdatedAt,
-      createdAt: user.createdAt,
+      id: session.user.id,
+      name: profile?.name ?? session.user.user_metadata?.name ?? "",
+      username: profile?.username ?? "",
+      email: profile?.email ?? email,
+      emailVerified: true,
+      profileUpdatedAt: profile?.profile_updated_at ?? null,
+      createdAt: profile?.created_at ?? session.user.created_at,
     },
   });
+});
+
+// ─── POST /api/auth/refresh ──────────────────────────────────────────────────
+
+router.post("/refresh", async (req, res) => {
+  const { refreshToken } = req.body;
+  if (!refreshToken || typeof refreshToken !== "string") {
+    res.status(400).json({ error: "refreshToken is required" });
+    return;
+  }
+
+  try {
+    const tokens = await refreshAccessToken(refreshToken);
+    res.json({ token: tokens.access_token, refreshToken: tokens.refresh_token });
+  } catch {
+    res.status(401).json({ error: "Session expired. Please log in again." });
+  }
 });
 
 // ─── GET /api/auth/verify?token=... ─────────────────────────────────────────
 
 router.get("/verify", async (req, res) => {
   const token = req.query["token"];
-
   if (!token || typeof token !== "string") {
     res.status(400).send(htmlPage("Invalid Link", "This verification link is invalid.", false));
     return;
   }
 
-  const now = new Date();
+  const now = new Date().toISOString();
 
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(
-      and(
-        eq(usersTable.verificationToken, token),
-        gt(usersTable.verificationTokenExpiresAt, now)
-      )
-    )
-    .limit(1);
+  const { data: profile } = await supabaseAdmin
+    .from("Profiles")
+    .select("Id, name, verification_token_expires_at")
+    .eq("verification_token", token)
+    .maybeSingle();
 
-  if (!user) {
+  if (
+    !profile ||
+    (profile.verification_token_expires_at &&
+      profile.verification_token_expires_at < now)
+  ) {
     res.status(400).send(
       htmlPage(
         "Link Expired",
@@ -269,20 +263,29 @@ router.get("/verify", async (req, res) => {
     return;
   }
 
-  // Mark as verified
-  await db
-    .update(usersTable)
-    .set({
-      emailVerified: true,
-      verificationToken: null,
-      verificationTokenExpiresAt: null,
-    })
-    .where(eq(usersTable.id, user.id));
+  // Confirm email in Supabase Auth
+  await supabaseAdmin.auth.admin.updateUserById(profile.Id, {
+    email_confirm: true,
+  });
+
+  // Clear the verification token from Profiles
+  await supabaseAdmin
+    .from("Profiles")
+    .update({ verification_token: null, verification_token_expires_at: null })
+    .eq("Id", profile.Id);
+
+  // Background: sync to Replit Postgres
+  syncToReplit(async () => {
+    await db
+      .update(usersTable)
+      .set({ emailVerified: true, verificationToken: null, verificationTokenExpiresAt: null })
+      .where(eq(usersTable.id, profile.Id));
+  });
 
   res.send(
     htmlPage(
       "Email Verified! ✓",
-      `Welcome to Ughelli Vibes, ${user.name}! Your account is now active. Open the app and log in.`,
+      `Welcome to Ughelli Vibes, ${profile.name ?? ""}! Your account is now active. Open the app and log in.`,
       true
     )
   );
@@ -297,35 +300,47 @@ router.post("/resend-verification", async (req, res) => {
     return;
   }
 
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.email, email.toLowerCase().trim()))
-    .limit(1);
+  const genericMessage =
+    "If that account exists and is unverified, a new link has been sent.";
 
-  // Always return success — don't reveal whether the email exists
-  if (!user || user.emailVerified) {
-    res.json({ message: "If that account exists and is unverified, a new link has been sent." });
+  const { data: profile } = await supabaseAdmin
+    .from("Profiles")
+    .select("Id, name, email")
+    .eq("email", email.toLowerCase().trim())
+    .maybeSingle();
+
+  if (!profile) {
+    res.json({ message: genericMessage });
     return;
   }
 
-  // Issue a fresh token
+  // Don't resend if already verified
+  const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(profile.Id);
+  if (authUser?.user?.email_confirmed_at) {
+    res.json({ message: genericMessage });
+    return;
+  }
+
   const verificationToken = generateToken();
   const verificationTokenExpiresAt = verificationExpiresAt();
 
-  await db
-    .update(usersTable)
-    .set({ verificationToken, verificationTokenExpiresAt })
-    .where(eq(usersTable.id, user.id));
+  await supabaseAdmin.from("Profiles").update({
+    verification_token: verificationToken,
+    verification_token_expires_at: verificationTokenExpiresAt.toISOString(),
+  }).eq("Id", profile.Id);
 
   const verificationUrl = `${getAppBaseUrl(req)}/api/auth/verify?token=${verificationToken}`;
   try {
-    await sendVerificationEmail({ to: user.email, name: user.name, verificationUrl });
+    await sendVerificationEmail({
+      to: profile.email,
+      name: profile.name ?? "",
+      verificationUrl,
+    });
   } catch (err) {
     req.log?.error?.({ err }, "Failed to send verification email");
   }
 
-  res.json({ message: "If that account exists and is unverified, a new link has been sent." });
+  res.json({ message: genericMessage });
 });
 
 // ─── POST /api/auth/forgot-password ─────────────────────────────────────────
@@ -338,35 +353,36 @@ router.post("/forgot-password", async (req, res) => {
   }
 
   const { email } = parsed.data;
+  const genericMessage =
+    "If that account exists, a password reset link has been sent.";
 
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.email, email.toLowerCase()))
-    .limit(1);
+  const { data: profile } = await supabaseAdmin
+    .from("Profiles")
+    .select("Id, name, email")
+    .eq("email", email.toLowerCase())
+    .maybeSingle();
 
-  // Always return success — don't reveal whether the email exists
-  const genericMessage = "If that account exists, a password reset link has been sent.";
-  if (!user) {
+  if (!profile) {
     res.json({ message: genericMessage });
     return;
   }
 
   const resetToken = generateToken();
-  const resetTokenExpiresAt = computeResetTokenExpiresAt();
+  const resetTokenExpiresAt = resetExpiresAt();
 
-  await db
-    .update(usersTable)
-    .set({ resetToken, resetTokenExpiresAt })
-    .where(eq(usersTable.id, user.id));
+  await supabaseAdmin.from("Profiles").update({
+    reset_token: resetToken,
+    reset_token_expires_at: resetTokenExpiresAt.toISOString(),
+  }).eq("Id", profile.Id);
 
   const resetUrl = `${getWebAppBaseUrl()}/auth/reset-password?token=${resetToken}`;
   try {
-    await sendPasswordResetEmail({ to: user.email, name: user.name, resetUrl });
+    await sendPasswordResetEmail({
+      to: profile.email,
+      name: profile.name ?? "",
+      resetUrl,
+    });
   } catch (err) {
-    // Don't leak email-delivery failures to the client — same reasoning as
-    // not revealing whether the account exists. Log so it's visible to devs
-    // (e.g. Resend test-mode restrictions before a sending domain is verified).
     req.log?.error?.({ err }, "Failed to send password reset email");
   }
 
@@ -383,28 +399,36 @@ router.post("/reset-password", async (req, res) => {
   }
 
   const { token, password } = parsed.data;
-  const now = new Date();
+  const now = new Date().toISOString();
 
-  const [user] = await db
-    .select()
-    .from(usersTable)
-    .where(and(eq(usersTable.resetToken, token), gt(usersTable.resetTokenExpiresAt, now)))
-    .limit(1);
+  const { data: profile } = await supabaseAdmin
+    .from("Profiles")
+    .select("Id, reset_token_expires_at")
+    .eq("reset_token", token)
+    .maybeSingle();
 
-  if (!user) {
-    res.status(400).json({ error: "This reset link has expired or is invalid. Please request a new one." });
+  if (!profile) {
+    res
+      .status(400)
+      .json({ error: "This reset link has expired or is invalid. Please request a new one." });
     return;
   }
 
-  const passwordHash = await hash(password, ARGON2_OPTIONS);
+  if (profile.reset_token_expires_at && profile.reset_token_expires_at < now) {
+    res
+      .status(400)
+      .json({ error: "This reset link has expired or is invalid. Please request a new one." });
+    return;
+  }
 
-  await db
-    .update(usersTable)
-    .set({ passwordHash, resetToken: null, resetTokenExpiresAt: null })
-    .where(eq(usersTable.id, user.id));
+  // Update password in Supabase Auth
+  await supabaseAdmin.auth.admin.updateUserById(profile.Id, { password });
 
-  // Invalidate all existing sessions so a stolen/old session can't survive a reset
-  await db.delete(sessionsTable).where(eq(sessionsTable.userId, user.id));
+  // Clear reset token
+  await supabaseAdmin
+    .from("Profiles")
+    .update({ reset_token: null, reset_token_expires_at: null })
+    .eq("Id", profile.Id);
 
   res.json({ message: "Your password has been reset. You can now log in." });
 });
@@ -413,7 +437,7 @@ router.post("/reset-password", async (req, res) => {
 
 router.post("/logout", requireAuth, async (req, res) => {
   const token = (req as any).sessionToken as string;
-  await db.delete(sessionsTable).where(eq(sessionsTable.token, token));
+  await revokeToken(token);
   res.json({ message: "Logged out" });
 });
 
@@ -424,8 +448,6 @@ router.get("/me", requireAuth, (req, res) => {
 });
 
 // ─── PATCH /api/auth/profile ─────────────────────────────────────────────────
-// Change name and/or username. Requires the current password, and is rate
-// limited to once every 14 days per account.
 
 router.patch("/profile", requireAuth, async (req, res) => {
   const parsed = updateProfileSchema.safeParse(req.body);
@@ -437,64 +459,85 @@ router.patch("/profile", requireAuth, async (req, res) => {
   const currentUser = (req as any).currentUser;
   const { name, username, password } = parsed.data;
 
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, currentUser.id)).limit(1);
-  if (!user) {
-    res.status(404).json({ error: "Account not found" });
-    return;
-  }
-
-  const passwordMatches = await verifyPassword(user.passwordHash, password);
-  if (!passwordMatches) {
+  // Verify current password (stateless REST call)
+  try {
+    await signInWithPassword(currentUser.email, password);
+  } catch {
     res.status(401).json({ error: "Incorrect password" });
     return;
   }
 
-  const cooldownMs = msUntilNextProfileEdit(user.profileUpdatedAt);
-  if (cooldownMs > 0) {
-    const nextAllowedAt = new Date(Date.now() + cooldownMs);
-    res.status(429).json({
-      error: `You can change your name or username again on ${nextAllowedAt.toLocaleDateString()}.`,
-      code: "PROFILE_EDIT_COOLDOWN",
-      nextAllowedAt: nextAllowedAt.toISOString(),
-    });
-    return;
+  // Enforce 14-day cooldown
+  if (currentUser.profileUpdatedAt) {
+    const nextAllowed = new Date(currentUser.profileUpdatedAt);
+    nextAllowed.setDate(nextAllowed.getDate() + PROFILE_EDIT_COOLDOWN_DAYS);
+    if (nextAllowed.getTime() > Date.now()) {
+      res.status(429).json({
+        error: `You can change your name or username again on ${nextAllowed.toLocaleDateString()}.`,
+        code: "PROFILE_EDIT_COOLDOWN",
+        nextAllowedAt: nextAllowed.toISOString(),
+      });
+      return;
+    }
   }
 
   const normalizedUsername = username?.toLowerCase();
 
-  if (normalizedUsername && normalizedUsername !== user.username) {
-    const [existingUsername] = await db
-      .select({ id: usersTable.id })
-      .from(usersTable)
-      .where(eq(usersTable.username, normalizedUsername))
-      .limit(1);
+  // Ensure username isn't taken
+  if (normalizedUsername && normalizedUsername !== currentUser.username) {
+    const { data: existing } = await supabaseAdmin
+      .from("Profiles")
+      .select("Id")
+      .eq("username", normalizedUsername)
+      .maybeSingle();
 
-    if (existingUsername) {
+    if (existing) {
       res.status(409).json({ error: "Username is already taken" });
       return;
     }
   }
 
-  const nowIso = new Date();
-  const [updated] = await db
-    .update(usersTable)
-    .set({
+  const nowIso = new Date().toISOString();
+
+  const { data: updated, error: updateError } = await supabaseAdmin
+    .from("Profiles")
+    .update({
       ...(name !== undefined ? { name } : {}),
       ...(normalizedUsername !== undefined ? { username: normalizedUsername } : {}),
-      profileUpdatedAt: nowIso,
+      profile_updated_at: nowIso,
     })
-    .where(eq(usersTable.id, user.id))
-    .returning({
-      id: usersTable.id,
-      name: usersTable.name,
-      username: usersTable.username,
-      email: usersTable.email,
-      emailVerified: usersTable.emailVerified,
-      profileUpdatedAt: usersTable.profileUpdatedAt,
-      createdAt: usersTable.createdAt,
-    });
+    .eq("Id", currentUser.id)
+    .select("Id, name, username, email, profile_updated_at, created_at")
+    .single();
 
-  res.json({ message: "Profile updated", user: updated });
+  if (updateError || !updated) {
+    res.status(500).json({ error: "Failed to update profile" });
+    return;
+  }
+
+  const updatedUser = {
+    id: updated.Id,
+    name: updated.name,
+    username: updated.username,
+    email: updated.email,
+    emailVerified: true,
+    profileUpdatedAt: updated.profile_updated_at,
+    createdAt: updated.created_at,
+  };
+
+  // Background: sync to Replit Postgres
+  syncToReplit(async () => {
+    await db
+      .update(usersTable)
+      .set({
+        ...(name !== undefined ? { name } : {}),
+        ...(normalizedUsername !== undefined ? { username: normalizedUsername } : {}),
+        profileUpdatedAt: new Date(nowIso),
+      })
+      .where(eq(usersTable.id, currentUser.id));
+  });
+
+  res.json({ message: "Profile updated", user: updatedUser });
 });
 
 // ─── HTML helper ─────────────────────────────────────────────────────────────
