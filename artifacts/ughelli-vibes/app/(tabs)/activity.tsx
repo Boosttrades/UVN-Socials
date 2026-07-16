@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -13,26 +13,9 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
-import { apiRequest } from '@/utils/api';
+import { useNotifications, type NotifType } from '@/contexts/NotificationsContext';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type NotifType = 'like' | 'comment' | 'follow' | 'mention' | 'verification' | 'system';
-
-interface ApiNotification {
-  id: string;
-  type: NotifType;
-  postId: string | null;
-  message: string;
-  read: boolean;
-  createdAt: string;
-  actor: {
-    id: string;
-    name: string;
-    username: string;
-    profileImage: string | null;
-  } | null;
-}
 
 type FilterTab = 'All' | 'Reactions' | 'Follows' | 'Mentions' | 'System';
 const TABS: FilterTab[] = ['All', 'Reactions', 'Follows', 'Mentions', 'System'];
@@ -93,71 +76,12 @@ export default function ActivityScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
+  const { notifications, unreadCount: unread, loading, refreshing, refresh, markAllRead, markOneRead } = useNotifications();
 
-  const [notifications, setNotifications] = useState<ApiNotification[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<FilterTab>('All');
 
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomPad = Platform.OS === 'web' ? 84 : insets.bottom + 60;
-
-  // ── Fetch ──────────────────────────────────────────────────────────────────
-
-  const fetchNotifications = useCallback(async () => {
-    if (!token) {
-      setNotifications([]);
-      setLoading(false);
-      return;
-    }
-    try {
-      const data = await apiRequest<{ notifications: ApiNotification[] }>(
-        '/notifications',
-        { token }
-      );
-      setNotifications(data.notifications);
-    } catch (e) {
-      // leave existing list on error
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    fetchNotifications();
-  }, [fetchNotifications]);
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchNotifications();
-  }, [fetchNotifications]);
-
-  // ── Mark all read ──────────────────────────────────────────────────────────
-
-  async function markAllRead() {
-    if (!token) return;
-    // Optimistic
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    try {
-      await apiRequest('/notifications/read-all', { method: 'POST', token });
-    } catch {
-      // silently re-fetch to reconcile
-      fetchNotifications();
-    }
-  }
-
-  // ── Mark single read on tap ────────────────────────────────────────────────
-
-  async function markOneRead(id: string) {
-    if (!token) return;
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
-    try {
-      await apiRequest(`/notifications/${id}/read`, { method: 'POST', token });
-    } catch {/* ignore */}
-  }
 
   // ── Filter ─────────────────────────────────────────────────────────────────
 
@@ -171,8 +95,6 @@ export default function ActivityScreen() {
       : activeTab === 'Mentions'
       ? notifications.filter((n) => n.type === 'mention')
       : notifications.filter((n) => n.type === 'system' || n.type === 'verification');
-
-  const unread = notifications.filter((n) => !n.read).length;
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -243,7 +165,7 @@ export default function ActivityScreen() {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={onRefresh}
+              onRefresh={refresh}
               tintColor={colors.primary}
               colors={[colors.primary]}
             />
