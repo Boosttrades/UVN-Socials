@@ -1,17 +1,9 @@
 import { Router, type IRouter } from "express";
 import { supabaseAdmin } from "../lib/supabase";
-import { db, followsTable } from "@workspace/db";
 import { requireAuth, optionalAuth } from "../middlewares/auth";
 import { createNotification } from "../lib/notifications";
 
 const router: IRouter = Router();
-
-/** Fire-and-forget background sync to Replit Postgres. */
-function syncToReplit(fn: () => Promise<void>): void {
-  fn().catch((err) =>
-    console.warn("[replit-sync] Background sync failed:", err?.message)
-  );
-}
 
 // ─── GET /api/users/search?q= ────────────────────────────────────────────────
 
@@ -173,23 +165,6 @@ router.post("/:username/follow", requireAuth, async (req, res) => {
     .from("Follows")
     .select("*", { count: "exact", head: true })
     .eq("following_id", target.Id);
-
-  syncToReplit(async () => {
-    const { and, eq } = await import("drizzle-orm");
-    if (following) {
-      await db
-        .insert(followsTable)
-        .values({ followerId: currentUser.id, followingId: target.Id })
-        .onConflictDoNothing();
-    } else {
-      await db.delete(followsTable).where(
-        and(
-          eq(followsTable.followerId, currentUser.id),
-          eq(followsTable.followingId, target.Id)
-        )
-      );
-    }
-  });
 
   res.json({ following, followersCount: followersCount ?? 0 });
 });

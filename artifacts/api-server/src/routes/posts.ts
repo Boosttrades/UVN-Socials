@@ -1,12 +1,6 @@
 import { Router, type IRouter } from "express";
 import { supabaseAdmin } from "../lib/supabase";
 import {
-  db,
-  postsTable,
-  commentsTable,
-  postLikesTable,
-  postBookmarksTable,
-  followsTable,
   createPostSchema,
   createCommentSchema,
 } from "@workspace/db";
@@ -17,13 +11,6 @@ const router: IRouter = Router();
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
-
-/** Fire-and-forget background sync to Replit Postgres. */
-function syncToReplit(fn: () => Promise<void>): void {
-  fn().catch((err) =>
-    console.warn("[replit-sync] Background sync failed:", err?.message)
-  );
-}
 
 // ─── GET /api/posts ──────────────────────────────────────────────────────────
 
@@ -173,20 +160,6 @@ router.post("/", requireAuth, async (req, res) => {
     return;
   }
 
-  // Background: sync to Replit Postgres
-  syncToReplit(async () => {
-    await db.insert(postsTable).values({
-      id: post.id,
-      authorId: currentUser.id,
-      type: parsed.data.type,
-      category: parsed.data.category,
-      headline: parsed.data.headline,
-      body: parsed.data.body,
-      imageUrl: parsed.data.imageUrl,
-      isEmergency: parsed.data.isEmergency ?? false,
-    }).onConflictDoNothing();
-  });
-
   res.status(201).json({
     post: {
       id: post.id,
@@ -234,11 +207,6 @@ router.delete("/:id", requireAuth, async (req, res) => {
   }
 
   await supabaseAdmin.from("Post").delete().eq("id", id);
-
-  syncToReplit(async () => {
-    const { eq } = await import("drizzle-orm");
-    await db.delete(postsTable).where(eq(postsTable.id, id));
-  });
 
   res.json({ message: "Post deleted" });
 });
@@ -292,17 +260,6 @@ router.post("/:id/like", requireAuth, async (req, res) => {
     .select("*", { count: "exact", head: true })
     .eq("post_id", postId);
 
-  syncToReplit(async () => {
-    const { and, eq } = await import("drizzle-orm");
-    if (liked) {
-      await db.insert(postLikesTable).values({ postId, userId: currentUser.id }).onConflictDoNothing();
-    } else {
-      await db.delete(postLikesTable).where(
-        and(eq(postLikesTable.postId, postId), eq(postLikesTable.userId, currentUser.id))
-      );
-    }
-  });
-
   res.json({ liked, likesCount: count ?? 0 });
 });
 
@@ -338,17 +295,6 @@ router.post("/:id/bookmark", requireAuth, async (req, res) => {
     await supabaseAdmin.from("Bookmarks").insert({ post_id: postId, user_id: currentUser.id });
     bookmarked = true;
   }
-
-  syncToReplit(async () => {
-    const { and, eq } = await import("drizzle-orm");
-    if (bookmarked) {
-      await db.insert(postBookmarksTable).values({ postId, userId: currentUser.id }).onConflictDoNothing();
-    } else {
-      await db.delete(postBookmarksTable).where(
-        and(eq(postBookmarksTable.postId, postId), eq(postBookmarksTable.userId, currentUser.id))
-      );
-    }
-  });
 
   res.json({ bookmarked });
 });
@@ -478,16 +424,6 @@ router.post("/:postId/comments", requireAuth, async (req, res) => {
     type: "comment",
     postId,
     message: `commented on your post`,
-  });
-
-  syncToReplit(async () => {
-    await db.insert(commentsTable).values({
-      id: comment.id,
-      postId,
-      authorId: currentUser.id,
-      body: parsed.data.body,
-      replyToHandle: parsed.data.replyToHandle,
-    }).onConflictDoNothing();
   });
 
   res.status(201).json({

@@ -1,7 +1,6 @@
 import { randomBytes } from "crypto";
 import { Router, type IRouter } from "express";
 import { supabaseAdmin, signInWithPassword, refreshAccessToken, revokeToken } from "../lib/supabase";
-import { db, usersTable } from "@workspace/db";
 import {
   forgotPasswordSchema,
   loginSchema,
@@ -9,20 +8,12 @@ import {
   signupSchema,
   updateProfileSchema,
 } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
 import { sendPasswordResetEmail, sendVerificationEmail } from "../lib/email";
 import { requireAuth } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/** Fire-and-forget background sync to Replit Postgres (the backup copy). */
-function syncToReplit(fn: () => Promise<void>): void {
-  fn().catch((err) =>
-    console.warn("[replit-sync] Background sync failed:", err?.message)
-  );
-}
 
 function generateToken(bytes = 32): string {
   return randomBytes(bytes).toString("hex");
@@ -119,23 +110,6 @@ router.post("/signup", async (req, res) => {
   } catch (err) {
     req.log?.error?.({ err }, "Failed to send verification email");
   }
-
-  // Background: mirror to Replit Postgres
-  syncToReplit(async () => {
-    await db
-      .insert(usersTable)
-      .values({
-        id: userId,
-        name,
-        username: normalizedUsername,
-        email: normalizedEmail,
-        passwordHash: "[SUPABASE_AUTH]", // auth is handled by Supabase
-        emailVerified: false,
-        verificationToken,
-        verificationTokenExpiresAt,
-      })
-      .onConflictDoNothing();
-  });
 
   res.status(201).json({
     message: "Account created! Check your email to verify your account.",
@@ -273,14 +247,6 @@ router.get("/verify", async (req, res) => {
     .from("Profiles")
     .update({ verification_token: null, verification_token_expires_at: null })
     .eq("Id", profile.Id);
-
-  // Background: sync to Replit Postgres
-  syncToReplit(async () => {
-    await db
-      .update(usersTable)
-      .set({ emailVerified: true, verificationToken: null, verificationTokenExpiresAt: null })
-      .where(eq(usersTable.id, profile.Id));
-  });
 
   res.send(
     htmlPage(
@@ -524,18 +490,6 @@ router.patch("/profile", requireAuth, async (req, res) => {
     profileUpdatedAt: updated.profile_updated_at,
     createdAt: updated.created_at,
   };
-
-  // Background: sync to Replit Postgres
-  syncToReplit(async () => {
-    await db
-      .update(usersTable)
-      .set({
-        ...(name !== undefined ? { name } : {}),
-        ...(normalizedUsername !== undefined ? { username: normalizedUsername } : {}),
-        profileUpdatedAt: new Date(nowIso),
-      })
-      .where(eq(usersTable.id, currentUser.id));
-  });
 
   res.json({ message: "Profile updated", user: updatedUser });
 });
