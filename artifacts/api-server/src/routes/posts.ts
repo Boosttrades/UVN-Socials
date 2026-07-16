@@ -3,7 +3,7 @@ import { supabaseAdmin } from "../lib/supabase";
 import {
   createPostSchema,
   createCommentSchema,
-} from "@workspace/db";
+} from "@workspace/db/schema";
 import { requireAuth, optionalAuth } from "../middlewares/auth";
 import { createNotification } from "../lib/notifications";
 

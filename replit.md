@@ -45,7 +45,7 @@ A local news network mobile app for Ughelli, Nigeria — inspired by X's interac
 
 ## Architecture decisions
 
-- **Data layer: Supabase (primary) + Replit Postgres (backup dual-write)**. All reads/writes go to Supabase via `supabaseAdmin` (service role). Every mutating operation fires a background `syncToReplit()` to Drizzle as a non-blocking backup. Auth is Supabase Auth (JWT Bearer tokens); the Express API proxies it so the Expo app never calls Supabase directly.
+- **Data layer: Supabase only**. All reads/writes go to Supabase via `supabaseAdmin` (service role). Replit Postgres is not used — `DATABASE_URL` is optional and the server starts without it. Auth is Supabase Auth (JWT Bearer tokens); the Express API proxies it so the Expo app never calls Supabase directly.
 - Auth: Supabase JWT Bearer tokens stored in AsyncStorage; `AuthContext` stores both `token` and `refreshToken`, silently refreshes on 401 before clearing session. Custom email verification kept (Resend + `verification_token` in Profiles, `admin.updateUserById({ email_confirm: true })`).
 - Posts: `POST /api/posts` (auth required) creates, `GET /api/posts` lists newest-first (public read), `DELETE /api/posts/:id` (author-only). Feed/Discover/Profile all read through `hooks/usePosts.ts` (TanStack Query) — no more mock feed data.
 - Notifications: `POST /api/posts/:id/like`, `POST /api/posts/:postId/comments`, and `POST /api/users/:username/follow` all fire `createNotification()` (fire-and-forget) into the `Notifications` Supabase table. `GET /api/notifications` returns the current user's notifications (newest 50). `POST /api/notifications/read-all` and `POST /api/notifications/:id/read` mark as read.

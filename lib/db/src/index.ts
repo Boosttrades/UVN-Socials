@@ -4,13 +4,15 @@ import * as schema from "./schema";
 
 const { Pool } = pg;
 
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
-}
+// Pool and db are only initialized when DATABASE_URL is present.
+// The API server no longer uses Drizzle — all data goes through Supabase.
+// These exports remain for tooling (drizzle-kit push) and future use.
+export const pool = process.env.DATABASE_URL
+  ? new Pool({ connectionString: process.env.DATABASE_URL })
+  : null as any;
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle(pool, { schema });
+export const db = process.env.DATABASE_URL
+  ? drizzle(pool, { schema })
+  : null as any;
 
 export * from "./schema";
