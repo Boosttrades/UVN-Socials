@@ -10,9 +10,23 @@ A local news network mobile app for Ughelli, Nigeria — inspired by X's interac
 - `pnpm install` — install all dependencies
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/db run push` — push schema changes to the database
-- Required secrets: `SESSION_SECRET` (session signing), `RESEND_API_KEY` (verification email) — both configured
-- Object storage (App Storage) bucket is provisioned (`DEFAULT_OBJECT_STORAGE_BUCKET_ID`, `PUBLIC_OBJECT_SEARCH_PATHS`, `PRIVATE_OBJECT_DIR` are set), but no upload routes/UI are wired yet — see follow-up tasks for photo uploads
+
+## Required Secrets & Environment Variables
+
+These must be configured on any Replit account or environment that runs this app. All data lives in Supabase — switching accounts only requires re-entering these values.
+
+| Name | Kind | Where to find it | Required? |
+|------|------|-----------------|-----------|
+| `SUPABASE_URL` | Secret | Supabase Dashboard → Project Settings → API → Project URL | ✅ Yes |
+| `SUPABASE_ANON_KEY` | Secret | Supabase Dashboard → Project Settings → API → anon public | ✅ Yes |
+| `SUPABASE_SERVICE_ROLE_KEY` | Secret | Supabase Dashboard → Project Settings → API → service_role | ✅ Yes |
+| `RESEND_API_KEY` | Secret | resend.com → API Keys | ✅ Yes |
+| `SESSION_SECRET` | Secret | Any long random string (e.g. 64 hex chars) | ✅ Yes |
+| `FROM_EMAIL` | Env var | Your verified Resend sender address (e.g. `noreply@yourdomain.com`) | ✅ Yes |
+| `SUPABASE_DB_PASSWORD` | Secret | Supabase Dashboard → Project Settings → Database → Database password | ⚪ Optional — only needed to connect directly via psql/TablePlus |
+
+> **Switching Replit accounts?** Import the repo from GitHub, add the 6 required secrets above, and start the workflows. Your users and data stay intact in Supabase — nothing is stored on Replit.
+
 - Known limitation: Resend is in test mode — it can only deliver to the account owner's own email until a sending domain is verified at resend.com/domains. Verification/reset email failures are caught and logged, not surfaced to the client, so signup/login still succeed in test mode.
 
 ## Stack

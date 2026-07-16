@@ -2,7 +2,23 @@
 
 A local news network app for Ughelli, Nigeria (X-inspired interaction patterns: tap a card for detail, inline replies, comment threads, emergency banner). This file is a snapshot for anyone picking up the build — **update it at every checkpoint** so it never goes stale.
 
-Last updated: July 16, 2026 (rev 4)
+Last updated: July 16, 2026 (rev 5)
+
+## Required Secrets & Environment Variables
+
+These must be re-entered on any Replit account or environment that runs this app. All user data lives in Supabase — switching accounts just requires adding these values again.
+
+| Name | Kind | Where to find it | Required? |
+|------|------|-----------------|-----------|
+| `SUPABASE_URL` | Secret | Supabase Dashboard → Project Settings → API → Project URL | ✅ Yes |
+| `SUPABASE_ANON_KEY` | Secret | Supabase Dashboard → Project Settings → API → anon public | ✅ Yes |
+| `SUPABASE_SERVICE_ROLE_KEY` | Secret | Supabase Dashboard → Project Settings → API → service_role | ✅ Yes |
+| `RESEND_API_KEY` | Secret | resend.com → API Keys | ✅ Yes |
+| `SESSION_SECRET` | Secret | Any long random string (64+ hex chars) | ✅ Yes |
+| `FROM_EMAIL` | Env var | Your verified Resend sender (e.g. `noreply@yourdomain.com`) | ✅ Yes |
+| `SUPABASE_DB_PASSWORD` | Secret | Supabase Dashboard → Project Settings → Database | ⚪ Optional — only for direct Postgres access via psql/TablePlus |
+
+> **Switching Replit accounts?** Import the repo from GitHub → add the 6 required items above → start the two workflows. Users and data stay in Supabase untouched.
 
 ## What's real right now
 
