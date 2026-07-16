@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Platform,
   Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
   View,
@@ -10,12 +12,32 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
-import type { Notification } from '@/constants/mockData';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiRequest } from '@/utils/api';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type NotifType = 'like' | 'comment' | 'follow' | 'mention' | 'verification' | 'system';
+
+interface ApiNotification {
+  id: string;
+  type: NotifType;
+  postId: string | null;
+  message: string;
+  read: boolean;
+  createdAt: string;
+  actor: {
+    id: string;
+    name: string;
+    username: string;
+    profileImage: string | null;
+  } | null;
+}
 
 type FilterTab = 'All' | 'Reactions' | 'Follows' | 'Mentions' | 'System';
 const TABS: FilterTab[] = ['All', 'Reactions', 'Follows', 'Mentions', 'System'];
 
-const NOTIF_ICON: Record<Notification['type'], string> = {
+const NOTIF_ICON: Record<NotifType, string> = {
   like: 'thumbs-up',
   comment: 'message-circle',
   follow: 'user-plus',
@@ -24,7 +46,7 @@ const NOTIF_ICON: Record<Notification['type'], string> = {
   system: 'bell',
 };
 
-const NOTIF_COLOR: Record<Notification['type'], string> = {
+const NOTIF_COLOR: Record<NotifType, string> = {
   like: '#0F8A5F',
   comment: '#1D4ED8',
   follow: '#7C3AED',
@@ -33,14 +55,111 @@ const NOTIF_COLOR: Record<Notification['type'], string> = {
   system: '#DC2626',
 };
 
+// Avatar background colours cycled by actor id
+const AVATAR_COLORS = [
+  '#0F8A5F', '#1D4ED8', '#7C3AED', '#DB2777',
+  '#DC2626', '#D97706', '#0891B2', '#059669',
+];
+function avatarColor(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffffffff;
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function timeAgo(isoString: string): string {
+  const now = Date.now();
+  const then = new Date(isoString).getTime();
+  const diff = Math.max(0, now - then);
+  const secs = Math.floor(diff / 1000);
+  if (secs < 60) return `${secs}s`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d`;
+  return new Date(isoString).toLocaleDateString();
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
+
 export default function ActivityScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { token } = useAuth();
+
+  const [notifications, setNotifications] = useState<ApiNotification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<FilterTab>('All');
-  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomPad = Platform.OS === 'web' ? 84 : insets.bottom + 60;
+
+  // ── Fetch ──────────────────────────────────────────────────────────────────
+
+  const fetchNotifications = useCallback(async () => {
+    if (!token) {
+      setNotifications([]);
+      setLoading(false);
+      return;
+    }
+    try {
+      const data = await apiRequest<{ notifications: ApiNotification[] }>(
+        '/notifications',
+        { token }
+      );
+      setNotifications(data.notifications);
+    } catch (e) {
+      // leave existing list on error
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchNotifications();
+  }, [fetchNotifications]);
+
+  // ── Mark all read ──────────────────────────────────────────────────────────
+
+  async function markAllRead() {
+    if (!token) return;
+    // Optimistic
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    try {
+      await apiRequest('/notifications/read-all', { method: 'POST', token });
+    } catch {
+      // silently re-fetch to reconcile
+      fetchNotifications();
+    }
+  }
+
+  // ── Mark single read on tap ────────────────────────────────────────────────
+
+  async function markOneRead(id: string) {
+    if (!token) return;
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    );
+    try {
+      await apiRequest(`/notifications/${id}/read`, { method: 'POST', token });
+    } catch {/* ignore */}
+  }
+
+  // ── Filter ─────────────────────────────────────────────────────────────────
 
   const filtered =
     activeTab === 'All'
@@ -55,9 +174,7 @@ export default function ActivityScreen() {
 
   const unread = notifications.filter((n) => !n.read).length;
 
-  function markAllRead() {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  }
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -113,71 +230,92 @@ export default function ActivityScreen() {
       </View>
 
       {/* List */}
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: bottomPad }}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => {
-          const accent = NOTIF_COLOR[item.type];
-          return (
-            <Pressable
-              style={[
-                styles.notifItem,
-                {
-                  backgroundColor: item.read ? colors.background : colors.accent,
-                  borderBottomColor: colors.border,
-                },
-              ]}
-            >
-              {/* Avatar or icon */}
-              {item.actorInitials ? (
-                <View style={[styles.actorAvatar, { backgroundColor: item.actorColor }]}>
-                  <Text style={styles.actorInitials}>{item.actorInitials}</Text>
-                </View>
-              ) : (
-                <View style={[styles.iconCircle, { backgroundColor: accent + '18' }]}>
-                  <Feather name={NOTIF_ICON[item.type] as any} size={16} color={accent} />
-                </View>
-              )}
+      {loading ? (
+        <View style={styles.center}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={{ paddingBottom: bottomPad }}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
+          renderItem={({ item }) => {
+            const accent = NOTIF_COLOR[item.type];
+            const actor = item.actor;
+            return (
+              <Pressable
+                onPress={() => !item.read && markOneRead(item.id)}
+                style={[
+                  styles.notifItem,
+                  {
+                    backgroundColor: item.read ? colors.background : colors.accent,
+                    borderBottomColor: colors.border,
+                  },
+                ]}
+              >
+                {/* Avatar or icon */}
+                {actor ? (
+                  <View style={[styles.actorAvatar, { backgroundColor: avatarColor(actor.id) }]}>
+                    <Text style={styles.actorInitials}>{initials(actor.name || actor.username)}</Text>
+                  </View>
+                ) : (
+                  <View style={[styles.iconCircle, { backgroundColor: accent + '18' }]}>
+                    <Feather name={NOTIF_ICON[item.type] as any} size={16} color={accent} />
+                  </View>
+                )}
 
-              {/* Text */}
-              <View style={{ flex: 1 }}>
-                {item.actor ? (
-                  <Text style={[styles.notifText, { color: colors.foreground }]}>
-                    <Text style={{ fontFamily: 'Inter_600SemiBold' }}>{item.actor} </Text>
-                    <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }}>
+                {/* Text */}
+                <View style={{ flex: 1 }}>
+                  {actor ? (
+                    <Text style={[styles.notifText, { color: colors.foreground }]}>
+                      <Text style={{ fontFamily: 'Inter_600SemiBold' }}>{actor.name || actor.username} </Text>
+                      <Text style={{ color: colors.mutedForeground, fontFamily: 'Inter_400Regular' }}>
+                        {item.message}
+                      </Text>
+                    </Text>
+                  ) : (
+                    <Text style={[styles.notifText, { color: colors.foreground, fontFamily: 'Inter_400Regular' }]}>
                       {item.message}
                     </Text>
+                  )}
+                  <Text style={[styles.notifTime, { color: colors.mutedForeground }]}>
+                    {timeAgo(item.createdAt)}
                   </Text>
-                ) : (
-                  <Text style={[styles.notifText, { color: colors.foreground, fontFamily: 'Inter_400Regular' }]}>
-                    {item.message}
-                  </Text>
-                )}
-                <Text style={[styles.notifTime, { color: colors.mutedForeground }]}>{item.timeAgo}</Text>
-              </View>
+                </View>
 
-              {/* Unread dot */}
-              {!item.read && (
-                <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
-              )}
-            </Pressable>
-          );
-        }}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Feather name="bell-off" size={40} color={colors.mutedForeground} />
-            <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>Nothing here yet</Text>
-          </View>
-        }
-      />
+                {/* Unread dot */}
+                {!item.read && (
+                  <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
+                )}
+              </Pressable>
+            );
+          }}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Feather name="bell-off" size={40} color={colors.mutedForeground} />
+              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+                {token ? 'Nothing here yet' : 'Sign in to see your activity'}
+              </Text>
+            </View>
+          }
+        />
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-end',

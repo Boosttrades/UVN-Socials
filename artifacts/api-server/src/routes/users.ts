@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { supabaseAdmin } from "../lib/supabase";
 import { db, followsTable } from "@workspace/db";
 import { requireAuth, optionalAuth } from "../middlewares/auth";
+import { createNotification } from "../lib/notifications";
 
 const router: IRouter = Router();
 
@@ -156,6 +157,16 @@ router.post("/:username/follow", requireAuth, async (req, res) => {
       .from("Follows")
       .insert({ follower_id: currentUser.id, following_id: target.Id });
     following = true;
+  }
+
+  // Notify the followed user
+  if (following) {
+    createNotification({
+      recipientId: target.Id,
+      actorId: currentUser.id,
+      type: "follow",
+      message: `started following you`,
+    });
   }
 
   const { count: followersCount } = await supabaseAdmin

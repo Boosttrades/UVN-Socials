@@ -11,6 +11,7 @@ import {
   createCommentSchema,
 } from "@workspace/db";
 import { requireAuth, optionalAuth } from "../middlewares/auth";
+import { createNotification } from "../lib/notifications";
 
 const router: IRouter = Router();
 
@@ -250,7 +251,7 @@ router.post("/:id/like", requireAuth, async (req, res) => {
 
   const { data: post } = await supabaseAdmin
     .from("Post")
-    .select("id")
+    .select("id, user_id")
     .eq("id", postId)
     .maybeSingle();
 
@@ -273,6 +274,17 @@ router.post("/:id/like", requireAuth, async (req, res) => {
   } else {
     await supabaseAdmin.from("Likes").insert({ post_id: postId, user_id: currentUser.id });
     liked = true;
+  }
+
+  // Notify post author when someone likes their post
+  if (liked) {
+    createNotification({
+      recipientId: post.user_id,
+      actorId: currentUser.id,
+      type: "like",
+      postId,
+      message: `liked your post`,
+    });
   }
 
   const { count } = await supabaseAdmin
@@ -428,7 +440,7 @@ router.post("/:postId/comments", requireAuth, async (req, res) => {
 
   const { data: post } = await supabaseAdmin
     .from("Post")
-    .select("id")
+    .select("id, user_id")
     .eq("id", postId)
     .maybeSingle();
 
@@ -458,6 +470,15 @@ router.post("/:postId/comments", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Failed to create comment" });
     return;
   }
+
+  // Notify post author when someone comments
+  createNotification({
+    recipientId: post.user_id,
+    actorId: currentUser.id,
+    type: "comment",
+    postId,
+    message: `commented on your post`,
+  });
 
   syncToReplit(async () => {
     await db.insert(commentsTable).values({
