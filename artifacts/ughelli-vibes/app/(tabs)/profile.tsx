@@ -6,6 +6,7 @@ import {
   Image,
   Platform,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -208,6 +209,16 @@ export default function ProfileScreen() {
 
         <TouchableOpacity
           style={[styles.actionBtn, styles.actionBtnOutline, { borderColor: colors.border }]}
+          onPress={async () => {
+            try {
+              await Share.share({
+                message: `Check out ${displayName} (${handle}) on Ughelli Vibes — your local news network!`,
+                title: `${displayName} on Ughelli Vibes`,
+              });
+            } catch {
+              // user dismissed, ignore
+            }
+          }}
         >
           <Feather name="share-2" size={14} color={colors.foreground} />
           <Text style={[styles.actionBtnOutlineText, { color: colors.foreground }]}>Share</Text>

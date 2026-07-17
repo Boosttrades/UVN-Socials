@@ -20,7 +20,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
 import { ALL_CATEGORIES, type PostCategory } from '@/constants/mockData';
-import { useCreatePost } from '@/hooks/usePosts';
+import { useCreatePost, useSearchUsers } from '@/hooks/usePosts';
 import { apiRequest, ApiError, getApiBase } from '@/utils/api';
 
 interface PostType {
@@ -56,6 +56,29 @@ export default function CreateScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
 
+  // ── @mention autocomplete ────────────────────────────────────────────────────
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const { data: mentionSuggestions = [] } = useSearchUsers(
+    mentionQuery !== null && mentionQuery.length > 0 ? mentionQuery : ''
+  );
+
+  function handleBodyChange(text: string) {
+    setBody(text);
+    // Detect @word at the end of typed text (most common typing position)
+    const match = text.match(/@(\w*)$/);
+    if (match) {
+      setMentionQuery(match[1]);
+    } else {
+      setMentionQuery(null);
+    }
+  }
+
+  function insertMention(username: string) {
+    const newBody = body.replace(/@(\w*)$/, `@${username} `);
+    setBody(newBody);
+    setMentionQuery(null);
+  }
+
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomPad = Platform.OS === 'web' ? 84 : insets.bottom + 60;
 
@@ -68,6 +91,7 @@ export default function CreateScreen() {
     setPublished(false);
     setErrorMessage(null);
     setImageUri(null);
+    setMentionQuery(null);
   }
 
   async function handlePickImage() {
@@ -280,8 +304,8 @@ export default function CreateScreen() {
                 <Text style={[styles.label, { color: colors.foreground }]}>Details</Text>
                 <TextInput
                   value={body}
-                  onChangeText={setBody}
-                  placeholder="Add more context or details (optional)..."
+                  onChangeText={handleBodyChange}
+                  placeholder="Add more context or details… type @ to mention someone"
                   placeholderTextColor={colors.mutedForeground}
                   style={[
                     styles.bodyInput,
@@ -291,6 +315,27 @@ export default function CreateScreen() {
                   maxLength={1000}
                   textAlignVertical="top"
                 />
+                {/* @mention suggestions */}
+                {mentionQuery !== null && mentionSuggestions.length > 0 && (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    keyboardShouldPersistTaps="always"
+                    style={[styles.mentionList, { backgroundColor: colors.card, borderColor: colors.border }]}
+                    contentContainerStyle={{ gap: 8, paddingHorizontal: 8, paddingVertical: 6 }}
+                  >
+                    {mentionSuggestions.slice(0, 8).map((s) => (
+                      <TouchableOpacity
+                        key={s.id}
+                        style={[styles.mentionChip, { backgroundColor: colors.muted, borderColor: colors.border }]}
+                        onPress={() => insertMention(s.username)}
+                      >
+                        <Text style={[styles.mentionChipHandle, { color: colors.primary }]}>@{s.username}</Text>
+                        <Text style={[styles.mentionChipName, { color: colors.mutedForeground }]}>{s.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
               </View>
 
               {/* Attach photo */}
@@ -515,6 +560,28 @@ const styles = StyleSheet.create({
   catChipText: {
     fontSize: 13,
     fontFamily: 'Inter_500Medium',
+  },
+  mentionList: {
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 6,
+    maxHeight: 56,
+  },
+  mentionChip: {
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  mentionChipHandle: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  mentionChipName: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+    marginTop: 1,
   },
   publishBtn: {
     flexDirection: 'row',

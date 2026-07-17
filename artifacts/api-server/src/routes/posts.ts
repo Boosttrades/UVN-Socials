@@ -160,6 +160,34 @@ router.post("/", requireAuth, async (req, res) => {
     return;
   }
 
+  // Extract @mentions from headline + body and fire notifications
+  const allText = [parsed.data.headline, parsed.data.body ?? ""].join(" ");
+  const mentionHandles = [
+    ...new Set(
+      (allText.match(/@([A-Za-z0-9_]+)/g) ?? []).map((m) =>
+        m.slice(1).toLowerCase()
+      )
+    ),
+  ].filter((h) => h !== currentUser.username?.toLowerCase());
+
+  if (mentionHandles.length > 0) {
+    supabaseAdmin
+      .from("Profiles")
+      .select("Id, username")
+      .in("username", mentionHandles)
+      .then(({ data: mentioned }) => {
+        for (const m of mentioned ?? []) {
+          createNotification({
+            recipientId: m.Id,
+            actorId: currentUser.id,
+            type: "mention",
+            postId: post.id,
+            message: `mentioned you in a post`,
+          });
+        }
+      });
+  }
+
   res.status(201).json({
     post: {
       id: post.id,

@@ -37,8 +37,15 @@ export default function DiscoverScreen() {
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomPad = Platform.OS === 'web' ? 84 : insets.bottom + 60;
 
-  const filteredPosts = query.trim()
-    ? posts.filter((p) => p.headline.toLowerCase().includes(query.trim().toLowerCase()))
+  const q = query.trim().toLowerCase();
+  const filteredPosts = q
+    ? posts.filter(
+        (p) =>
+          p.headline.toLowerCase().includes(q) ||
+          (p.body ?? '').toLowerCase().includes(q) ||
+          p.author.name.toLowerCase().includes(q) ||
+          p.author.username.toLowerCase().includes(q)
+      )
     : [];
 
   return (
