@@ -83,7 +83,8 @@ These must be re-entered on any Replit account or environment that runs this app
 - The API server dev workflow needs `PORT=8080` injected via `artifact.toml`.
 - The 14-day profile-edit cooldown is enforced both client-side (UX) and server-side (source of truth).
 - After changing anything in `lib/db` or `lib/api-zod`, run `pnpm run typecheck:libs` from the repo root before typechecking `artifacts/api-server`.
-- The mobile client is Expo/React Native — use `expo-image-picker` + direct `fetch` PUT for uploads, not `@workspace/object-storage-web` (Uppy/React-DOM, incompatible with RN).
+- The mobile client is Expo/React Native — use `expo-image-picker` + direct `fetch` PUT to the Supabase signed upload URL. Do not use `@workspace/object-storage-web` (Uppy/React-DOM, incompatible with RN).
+- All image storage now lives in **Supabase Storage** (`media` bucket). No Replit-specific env vars (`PRIVATE_OBJECT_DIR`, `PUBLIC_OBJECT_SEARCH_PATHS`) are needed. The bucket is auto-created on first server start.
 - Supabase table/column names use PascalCase (`Profiles`, `Id`, `Post`, etc.) — match exactly or you'll get "column does not exist" errors.
 - Node.js 20 lacks native WebSocket — the Supabase client needs `ws` polyfilled on `globalThis.WebSocket` before `createClient()` (already done in `src/lib/supabase.ts`). Upgrade to Node 22+ to remove this polyfill.
 - @mention detection in the create screen uses a trailing `/@(\w*)$/` regex on the body text — it catches typing at the end of the field, which is the 95% case. Mentions at mid-text positions won't trigger the autocomplete (the final parsed usernames in the post are still extracted server-side regardless).

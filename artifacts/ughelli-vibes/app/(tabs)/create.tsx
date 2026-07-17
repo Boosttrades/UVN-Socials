@@ -152,9 +152,10 @@ export default function CreateScreen() {
       const blob = await fileResponse.blob();
       const contentType = blob.type || 'image/jpeg';
 
-      const { uploadURL, objectPath } = await apiRequest<{
+      const { uploadURL, publicUrl } = await apiRequest<{
         uploadURL: string;
         objectPath: string;
+        publicUrl: string;
       }>('/storage/uploads/request-url', {
         method: 'POST',
         token,
@@ -170,9 +171,8 @@ export default function CreateScreen() {
         throw new Error('Upload failed');
       }
 
-      // objectPath is like "/objects/uploads/<id>" — serve it from our own
-      // API so the mobile client never talks to the bucket directly.
-      return `${getApiBase()}/storage${objectPath}`;
+      // publicUrl is a permanent Supabase Storage URL — store it directly.
+      return publicUrl;
     } finally {
       setIsUploadingImage(false);
     }

@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { ensureMediaBucket } from "./routes/storage";
 
 const rawPort = process.env["PORT"];
 
@@ -14,6 +15,11 @@ const port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+
+// Ensure Supabase Storage bucket exists before serving requests
+ensureMediaBucket().catch((err) =>
+  logger.warn({ err }, "Could not ensure media bucket")
+);
 
 app.listen(port, (err) => {
   if (err) {

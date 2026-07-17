@@ -90,9 +90,10 @@ export default function ProfileScreen() {
       // 1. Request presigned upload URL from our API
       const ext = asset.uri.split('.').pop()?.toLowerCase() ?? 'jpg';
       const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
-      const { uploadURL, objectPath } = await apiRequest<{
+      const { uploadURL, publicUrl } = await apiRequest<{
         uploadURL: string;
         objectPath: string;
+        publicUrl: string;
       }>('/storage/uploads/request-url', {
         method: 'POST',
         token,
@@ -103,7 +104,7 @@ export default function ProfileScreen() {
         },
       });
 
-      // 2. Upload directly to object storage via presigned PUT URL
+      // 2. Upload directly to Supabase Storage via signed PUT URL
       const blob = await fetch(asset.uri).then((r) => r.blob());
       const upload = await fetch(uploadURL, {
         method: 'PUT',
@@ -113,8 +114,8 @@ export default function ProfileScreen() {
 
       if (!upload.ok) throw new Error('Upload failed');
 
-      // 3. Save objectPath on the profile
-      await updateProfileImage(objectPath);
+      // 3. Save the permanent Supabase public URL on the profile
+      await updateProfileImage(publicUrl);
     } catch (err: any) {
       Alert.alert('Upload failed', err?.message ?? 'Something went wrong. Try again.');
     } finally {
