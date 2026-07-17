@@ -1,5 +1,6 @@
 import React from 'react';
 import { FlatList, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -71,7 +72,16 @@ export default function UserProfileScreen() {
       <View style={[styles.body, { backgroundColor: colors.background }]}>
         <View style={styles.avatarRow}>
           <View style={[styles.avatar, { backgroundColor: colors.primary, borderColor: colors.background }]}>
-            <Text style={styles.avatarText}>{initials}</Text>
+            {profile?.profileImage ? (
+              <Image
+                source={{ uri: profile.profileImage }}
+                style={styles.avatarImg}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+              />
+            ) : (
+              <Text style={styles.avatarText}>{initials}</Text>
+            )}
           </View>
           {!isOwnProfile && (
             <TouchableOpacity
@@ -169,7 +179,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 3,
+    overflow: 'hidden',
   },
+  avatarImg: { width: 80, height: 80, borderRadius: 40 },
   avatarText: { color: '#FFFFFF', fontSize: 26, fontFamily: 'Inter_700Bold' },
   followBtn: {
     paddingHorizontal: 20,

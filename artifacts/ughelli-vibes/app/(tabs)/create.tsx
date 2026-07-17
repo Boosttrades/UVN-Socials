@@ -53,8 +53,9 @@ export default function CreateScreen() {
   const [category, setCategory] = useState<PostCategory | null>(null);
   const [published, setPublished] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const [imageUris, setImageUris] = useState<string[]>([]);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const MAX_IMAGES = 3;
 
   // ── @mention autocomplete ────────────────────────────────────────────────────
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -90,11 +91,13 @@ export default function CreateScreen() {
     setCategory(null);
     setPublished(false);
     setErrorMessage(null);
-    setImageUri(null);
+    setImageUris([]);
     setMentionQuery(null);
   }
 
   async function handlePickImage() {
+    if (imageUris.length >= MAX_IMAGES) return;
+
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       setErrorMessage('Photo library access is needed to attach a photo.');
@@ -103,15 +106,18 @@ export default function CreateScreen() {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      quality: 0.8,
-      allowsEditing: true,
-      aspect: [16, 9],
+      quality: 1,
+      // No allowsEditing / no aspect ratio — keep the full original frame
     });
 
     if (!result.canceled && result.assets[0]) {
       setErrorMessage(null);
-      setImageUri(result.assets[0].uri);
+      setImageUris((prev) => [...prev, result.assets[0].uri].slice(0, MAX_IMAGES));
     }
+  }
+
+  function handleRemoveImage(index: number) {
+    setImageUris((prev) => prev.filter((_, i) => i !== index));
   }
 
   /**
@@ -137,42 +143,42 @@ export default function CreateScreen() {
     }
   }
 
-  /**
-   * Uploads the picked image directly to the presigned object storage URL and
-   * returns the server-relative path (`/api/storage/objects/...`) to store on
-   * the post. Returns undefined if there is no image to upload.
-   */
-  async function uploadSelectedImage(): Promise<string | undefined> {
-    if (!imageUri) return undefined;
+  /** Upload a single image URI and return its permanent Supabase public URL */
+  async function uploadOneImage(uri: string): Promise<string> {
+    const compressed = await compressImage(uri);
+    const fileResponse = await fetch(compressed.uri);
+    const blob = await fileResponse.blob();
+    const contentType = blob.type || 'image/jpeg';
 
+    const { uploadURL, publicUrl } = await apiRequest<{
+      uploadURL: string;
+      objectPath: string;
+      publicUrl: string;
+    }>('/storage/uploads/request-url', {
+      method: 'POST',
+      token,
+      body: { name: `post-image-${Date.now()}-${Math.random().toString(36).slice(2)}`, size: blob.size, contentType },
+    });
+
+    const putResponse = await fetch(uploadURL, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: blob,
+    });
+    if (!putResponse.ok) throw new Error('Upload failed');
+    return publicUrl;
+  }
+
+  /** Upload all selected images sequentially and return the URL array */
+  async function uploadAllImages(): Promise<string[]> {
+    if (imageUris.length === 0) return [];
     setIsUploadingImage(true);
     try {
-      const compressed = await compressImage(imageUri);
-      const fileResponse = await fetch(compressed.uri);
-      const blob = await fileResponse.blob();
-      const contentType = blob.type || 'image/jpeg';
-
-      const { uploadURL, publicUrl } = await apiRequest<{
-        uploadURL: string;
-        objectPath: string;
-        publicUrl: string;
-      }>('/storage/uploads/request-url', {
-        method: 'POST',
-        token,
-        body: { name: `post-image-${Date.now()}`, size: blob.size, contentType },
-      });
-
-      const putResponse = await fetch(uploadURL, {
-        method: 'PUT',
-        headers: { 'Content-Type': contentType },
-        body: blob,
-      });
-      if (!putResponse.ok) {
-        throw new Error('Upload failed');
+      const urls: string[] = [];
+      for (const uri of imageUris) {
+        urls.push(await uploadOneImage(uri));
       }
-
-      // publicUrl is a permanent Supabase Storage URL — store it directly.
-      return publicUrl;
+      return urls;
     } finally {
       setIsUploadingImage(false);
     }
@@ -183,13 +189,13 @@ export default function CreateScreen() {
     setErrorMessage(null);
 
     try {
-      const imageUrl = await uploadSelectedImage();
+      const imageUrls = await uploadAllImages();
       await createPost.mutateAsync({
         type: selectedType.id,
         category: category ?? undefined,
         headline: title.trim(),
         body: body.trim() || undefined,
-        imageUrl,
+        imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
         isEmergency: selectedType.id === 'incident',
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -200,7 +206,7 @@ export default function CreateScreen() {
         setBody('');
         setCategory(null);
         setPublished(false);
-        setImageUri(null);
+        setImageUris([]);
         router.push('/(tabs)');
       }, 1600);
     } catch (err) {

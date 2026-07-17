@@ -18,6 +18,8 @@ export interface Author {
   isOrg: boolean;
   initials: string;
   avatarColor: string;
+  /** Supabase Storage public URL for the author's profile photo, or null */
+  profileImage?: string | null;
 }
 
 export interface FeedPost {
@@ -26,6 +28,10 @@ export interface FeedPost {
   author: Author;
   headline: string;
   body?: string;
+  /** Array of image sources for multi-image posts (up to 3) */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  imageSources?: any[];
+  /** @deprecated use imageSources[0] — kept so old callsites don't break */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   imageSource?: any;
   timeAgo: string;

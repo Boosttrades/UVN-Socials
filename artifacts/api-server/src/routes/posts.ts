@@ -27,7 +27,7 @@ router.get("/", optionalAuth, async (req, res) => {
     .from("Post")
     .select(
       `id, type, category, headline, text, image_url, is_emergency, shares_count, created_at,
-       author:Profiles!user_id(Id, name, username)`
+       author:Profiles!user_id(Id, name, username, profile_image)`
     )
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
@@ -50,6 +50,16 @@ router.get("/", optionalAuth, async (req, res) => {
   if (postsError) {
     res.status(500).json({ error: "Failed to fetch posts" });
     return;
+  }
+
+  // Helper: parse image_url — may be a JSON array (multi-image posts) or a
+  // plain URL string (legacy single-image posts). Always returns string[].
+  function parseImageUrls(raw: string | null | undefined): string[] {
+    if (!raw) return [];
+    if (raw.startsWith("[")) {
+      try { return JSON.parse(raw) as string[]; } catch { return [raw]; }
+    }
+    return [raw];
   }
 
   const hasMore = (rawPosts?.length ?? 0) > limit;
@@ -105,7 +115,7 @@ router.get("/", optionalAuth, async (req, res) => {
     category: p.category ?? null,
     headline: p.headline ?? p.text ?? "",
     body: p.text ?? null,
-    imageUrl: p.image_url ?? null,
+    imageUrls: parseImageUrls(p.image_url),
     isEmergency: p.is_emergency ?? false,
     sharesCount: p.shares_count ?? 0,
     createdAt: p.created_at,
@@ -113,6 +123,7 @@ router.get("/", optionalAuth, async (req, res) => {
       id: p.author?.Id ?? "",
       name: p.author?.name ?? "",
       username: p.author?.username ?? "",
+      profileImage: p.author?.profile_image ?? null,
     },
     likesCount: likesCountMap.get(p.id) ?? 0,
     commentsCount: commentsCountMap.get(p.id) ?? 0,
@@ -140,13 +151,27 @@ router.post("/", requireAuth, async (req, res) => {
 
   const currentUser = (req as any).currentUser;
 
+  // Resolve image storage: imageUrls (multi) takes priority over imageUrl (legacy single)
+  const resolvedUrls: string[] =
+    parsed.data.imageUrls && parsed.data.imageUrls.length > 0
+      ? parsed.data.imageUrls.slice(0, 3)
+      : parsed.data.imageUrl
+      ? [parsed.data.imageUrl]
+      : [];
+  const storedImageUrl =
+    resolvedUrls.length === 0
+      ? null
+      : resolvedUrls.length === 1
+      ? resolvedUrls[0]
+      : JSON.stringify(resolvedUrls);
+
   const { data: post, error } = await supabaseAdmin
     .from("Post")
     .insert({
       user_id: currentUser.id,
       headline: parsed.data.headline,
       text: parsed.data.body ?? null,
-      image_url: parsed.data.imageUrl ?? null,
+      image_url: storedImageUrl,
       type: parsed.data.type,
       category: parsed.data.category ?? null,
       is_emergency: parsed.data.isEmergency ?? false,
@@ -195,7 +220,7 @@ router.post("/", requireAuth, async (req, res) => {
       category: post.category ?? null,
       headline: post.headline ?? post.text ?? "",
       body: post.text ?? null,
-      imageUrl: post.image_url ?? null,
+      imageUrls: resolvedUrls,
       isEmergency: post.is_emergency ?? false,
       sharesCount: 0,
       createdAt: post.created_at,
@@ -203,6 +228,7 @@ router.post("/", requireAuth, async (req, res) => {
         id: currentUser.id,
         name: currentUser.name,
         username: currentUser.username,
+        profileImage: currentUser.profileImage ?? null,
       },
       likesCount: 0,
       commentsCount: 0,

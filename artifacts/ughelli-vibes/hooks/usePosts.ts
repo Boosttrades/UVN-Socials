@@ -11,7 +11,8 @@ export interface ApiPost {
   category: PostCategory | null;
   headline: string;
   body: string | null;
-  imageUrl: string | null;
+  /** Multi-image: always an array (may be empty). Server normalises legacy single-URL posts. */
+  imageUrls: string[];
   isEmergency: boolean;
   sharesCount: number;
   likesCount: number;
@@ -23,6 +24,7 @@ export interface ApiPost {
     id: string;
     name: string;
     username: string;
+    profileImage: string | null;
   };
 }
 
@@ -31,7 +33,8 @@ interface CreatePostInput extends Record<string, unknown> {
   category?: PostCategory;
   headline: string;
   body?: string;
-  imageUrl?: string;
+  /** Up to 3 image URLs */
+  imageUrls?: string[];
   isEmergency?: boolean;
 }
 
@@ -63,6 +66,7 @@ function timeAgo(iso: string): string {
 }
 
 export function apiPostToFeedPost(post: ApiPost): FeedPost {
+  const sources = post.imageUrls.map((url) => ({ uri: url }));
   return {
     id: post.id,
     category: post.isEmergency ? 'Emergency' : post.category ?? 'News',
@@ -74,10 +78,12 @@ export function apiPostToFeedPost(post: ApiPost): FeedPost {
       isOrg: false,
       initials: getInitials(post.author.name),
       avatarColor: colorForId(post.author.id),
+      profileImage: post.author.profileImage ?? null,
     },
     headline: post.headline,
     body: post.body ?? undefined,
-    imageSource: post.imageUrl ? { uri: post.imageUrl } : undefined,
+    imageSources: sources.length > 0 ? sources : undefined,
+    imageSource: sources[0],
     timeAgo: timeAgo(post.createdAt),
     likes: post.likesCount,
     comments: post.commentsCount,
@@ -320,6 +326,7 @@ export interface ApiUserProfile {
   id: string;
   name: string;
   username: string;
+  profileImage: string | null;
   followersCount: number;
   followingCount: number;
   postsCount: number;

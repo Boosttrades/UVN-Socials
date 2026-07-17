@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
+  Modal,
   Platform,
   Pressable,
   Share,
@@ -12,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -52,6 +54,7 @@ export default function ProfileScreen() {
   const { data: profile } = useUserProfile(user?.username);
   const [activeTab, setActiveTab] = useState<ProfileTab>('Updates');
   const [uploading, setUploading] = useState(false);
+  const [viewingPhoto, setViewingPhoto] = useState(false);
 
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomPad = Platform.OS === 'web' ? 84 : insets.bottom + 60;
@@ -65,7 +68,7 @@ export default function ProfileScreen() {
 
   // ── Upload flow ─────────────────────────────────────────────────────────────
 
-  async function handlePickPhoto() {
+  async function pickAndUploadPhoto() {
     if (Platform.OS !== 'web') {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
@@ -78,18 +81,22 @@ export default function ProfileScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.85,
+      quality: 1,           // keep full quality; we compress below
     });
 
     if (result.canceled || !result.assets?.[0]) return;
 
-    const asset = result.assets[0];
     setUploading(true);
-
     try {
-      // 1. Request presigned upload URL from our API
-      const ext = asset.uri.split('.').pop()?.toLowerCase() ?? 'jpg';
-      const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
+      // Compress to 400×400 — profile photos are displayed small; no need for more
+      const { ImageManipulator, SaveFormat } = await import('expo-image-manipulator');
+      const compressed = await ImageManipulator.manipulateAsync(
+        result.assets[0].uri,
+        [{ resize: { width: 400, height: 400 } }],
+        { compress: 0.85, format: SaveFormat.JPEG }
+      );
+
+      const contentType = 'image/jpeg';
       const { uploadURL, publicUrl } = await apiRequest<{
         uploadURL: string;
         objectPath: string;
@@ -98,14 +105,13 @@ export default function ProfileScreen() {
         method: 'POST',
         token,
         body: {
-          name: `profile-${user?.id}.${ext}`,
-          size: asset.fileSize ?? 0,
+          name: `profile-${user?.id}-${Date.now()}.jpg`,
+          size: 0,
           contentType,
         },
       });
 
-      // 2. Upload directly to Supabase Storage via signed PUT URL
-      const blob = await fetch(asset.uri).then((r) => r.blob());
+      const blob = await fetch(compressed.uri).then((r) => r.blob());
       const upload = await fetch(uploadURL, {
         method: 'PUT',
         headers: { 'Content-Type': contentType },
@@ -113,8 +119,6 @@ export default function ProfileScreen() {
       });
 
       if (!upload.ok) throw new Error('Upload failed');
-
-      // 3. Save the permanent Supabase public URL on the profile
       await updateProfileImage(publicUrl);
     } catch (err: any) {
       Alert.alert('Upload failed', err?.message ?? 'Something went wrong. Try again.');
@@ -123,19 +127,67 @@ export default function ProfileScreen() {
     }
   }
 
+  /** Tapping the avatar: show action sheet if photo exists, else go straight to picker */
+  function handleAvatarPress() {
+    if (uploading) return;
+    if (!photoUrl) {
+      pickAndUploadPhoto();
+      return;
+    }
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Cancel', 'View Photo', 'Change Photo'], cancelButtonIndex: 0 },
+        (idx) => {
+          if (idx === 1) setViewingPhoto(true);
+          if (idx === 2) pickAndUploadPhoto();
+        }
+      );
+    } else {
+      // Android / web — use Alert as the action sheet
+      Alert.alert('Profile Photo', undefined, [
+        { text: 'View Photo', onPress: () => setViewingPhoto(true) },
+        { text: 'Change Photo', onPress: pickAndUploadPhoto },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  }
+
   // ── Avatar ──────────────────────────────────────────────────────────────────
 
   const Avatar = (
     <View style={styles.avatarContainer}>
+      {/* Full-screen photo viewer modal */}
+      <Modal
+        visible={viewingPhoto}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setViewingPhoto(false)}
+      >
+        <Pressable
+          style={styles.photoViewerBg}
+          onPress={() => setViewingPhoto(false)}
+        >
+          <Image
+            source={{ uri: photoUrl ?? '' }}
+            style={styles.photoViewerImg}
+            contentFit="contain"
+          />
+        </Pressable>
+      </Modal>
+
       <Pressable
-        onPress={handlePickPhoto}
-        disabled={uploading}
-        accessibilityLabel="Change profile photo"
+        onPress={handleAvatarPress}
+        accessibilityLabel={photoUrl ? 'Profile photo options' : 'Add profile photo'}
         accessibilityRole="button"
         style={[styles.avatarRing, { borderColor: colors.primary }]}
       >
         {photoUrl ? (
-          <Image source={{ uri: photoUrl }} style={styles.avatarImage} />
+          <Image
+            source={{ uri: photoUrl }}
+            style={styles.avatarImage}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+          />
         ) : (
           <View style={[styles.avatarInitials, { backgroundColor: colors.primary }]}>
             <Text style={styles.avatarInitialsText}>
@@ -144,12 +196,12 @@ export default function ProfileScreen() {
           </View>
         )}
 
-        {/* Camera overlay */}
+        {/* Camera overlay — small badge at bottom so it doesn't obscure photo */}
         <View style={[styles.cameraOverlay, { backgroundColor: 'rgba(0,0,0,0.45)' }]}>
           {uploading ? (
             <ActivityIndicator size="small" color="#fff" />
           ) : (
-            <Feather name="camera" size={20} color="#fff" />
+            <Feather name="camera" size={18} color="#fff" />
           )}
         </View>
       </Pressable>
@@ -312,6 +364,17 @@ const styles = StyleSheet.create({
   // ── Avatar ──────────────────────────────────────────────────────────────────
   avatarContainer: {
     marginBottom: 16,
+  },
+  photoViewerBg: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoViewerImg: {
+    width: '90%',
+    aspectRatio: 1,
+    borderRadius: 12,
   },
   avatarRing: {
     width: AVATAR_SIZE + 6,

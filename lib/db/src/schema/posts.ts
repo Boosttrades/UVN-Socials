@@ -48,7 +48,10 @@ export const createPostSchema = z.object({
   category: z.enum(POST_CATEGORIES).optional(),
   headline: z.string().trim().min(1, "Headline is required").max(200),
   body: z.string().trim().max(1000).optional(),
-  imageUrl: z.string().trim().min(1).max(500).optional(),
+  // Legacy single-image field kept for compat; prefer imageUrls for new posts
+  imageUrl: z.string().trim().min(1).max(2000).optional(),
+  // Up to 3 image URLs stored as JSON in the image_url column
+  imageUrls: z.array(z.string().min(1).max(2000)).max(3).optional(),
   isEmergency: z.boolean().optional(),
 });
 

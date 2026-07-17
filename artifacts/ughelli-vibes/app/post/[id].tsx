@@ -154,9 +154,21 @@ export default function PostDetailScreen() {
 
         {/* Author */}
         <View style={styles.authorRow}>
-          <View style={[styles.avatar, { backgroundColor: safePost.author.avatarColor }]}>
-            <Text style={styles.avatarText}>{safePost.author.initials}</Text>
-          </View>
+          <Pressable
+            onPress={() => router.push(`/user/${safePost.author.handle}` as any)}
+            style={[styles.avatar, { backgroundColor: safePost.author.avatarColor }]}
+          >
+            {safePost.author.profileImage ? (
+              <Image
+                source={{ uri: safePost.author.profileImage }}
+                style={styles.avatarImg}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+              />
+            ) : (
+              <Text style={styles.avatarText}>{safePost.author.initials}</Text>
+            )}
+          </Pressable>
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={[styles.authorName, { color: colors.foreground }]}>{safePost.author.name}</Text>
@@ -203,16 +215,32 @@ export default function PostDetailScreen() {
           </Text>
         ) : null}
 
-        {/* Image */}
-        {safePost.imageSource ? (
-          <Image
-            source={safePost.imageSource}
-            style={styles.image}
-            contentFit="cover"
-            transition={150}
-            cachePolicy="memory-disk"
-            recyclingKey={safePost.id}
-          />
+        {/* Images (up to 3) */}
+        {safePost.imageSources && safePost.imageSources.length > 0 ? (
+          safePost.imageSources.length === 1 ? (
+            <Image
+              source={safePost.imageSources[0]}
+              style={styles.image}
+              contentFit="contain"
+              transition={150}
+              cachePolicy="memory-disk"
+              recyclingKey={`${safePost.id}-0`}
+            />
+          ) : (
+            <View style={styles.multiImageRow}>
+              {safePost.imageSources.map((src, i) => (
+                <Image
+                  key={i}
+                  source={src}
+                  style={[styles.multiImage, safePost.imageSources!.length === 2 ? styles.multiImage2 : styles.multiImage3]}
+                  contentFit="cover"
+                  transition={150}
+                  cachePolicy="memory-disk"
+                  recyclingKey={`${safePost.id}-${i}`}
+                />
+              ))}
+            </View>
+          )
         ) : null}
 
         {/* Job / Event details */}
@@ -397,7 +425,8 @@ const styles = StyleSheet.create({
   },
   categoryText: { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 0.4 },
   authorRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
-  avatar: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarImg: { width: 44, height: 44, borderRadius: 22 },
   avatarText: { color: '#FFFFFF', fontSize: 14, fontFamily: 'Inter_700Bold' },
   authorName: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
   handle: { fontSize: 12, fontFamily: 'Inter_400Regular', marginTop: 2 },
@@ -405,7 +434,11 @@ const styles = StyleSheet.create({
   followBtnText: { color: '#FFFFFF', fontSize: 13, fontFamily: 'Inter_600SemiBold' },
   headline: { fontSize: 20, fontFamily: 'Inter_700Bold', lineHeight: 28, marginBottom: 10 },
   body: { fontSize: 15, fontFamily: 'Inter_400Regular', lineHeight: 22, marginBottom: 14 },
-  image: { width: '100%', height: 220, borderRadius: 12, marginBottom: 14 },
+  image: { width: '100%', aspectRatio: 4 / 3, borderRadius: 12, marginBottom: 14 },
+  multiImageRow: { flexDirection: 'row', gap: 4, marginBottom: 14, borderRadius: 12, overflow: 'hidden' },
+  multiImage: { aspectRatio: 1, borderRadius: 0 },
+  multiImage2: { flex: 1 },
+  multiImage3: { flex: 1 },
   detailsCard: { borderRadius: 12, padding: 12, marginBottom: 14, gap: 8 },
   detailRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   detailText: { fontSize: 13, fontFamily: 'Inter_400Regular' },

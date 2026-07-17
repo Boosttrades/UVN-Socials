@@ -144,9 +144,19 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
 
       {/* Author row */}
       <View style={styles.authorRow}>
-        <View style={[styles.avatar, { backgroundColor: post.author.avatarColor }]}>
-          <Text style={styles.avatarText}>{post.author.initials}</Text>
-        </View>
+        <Pressable onPress={() => router.push(`/user/${post.author.handle}` as any)} style={[styles.avatar, { backgroundColor: post.author.avatarColor }]}>
+          {post.author.profileImage ? (
+            <Image
+              source={{ uri: post.author.profileImage }}
+              style={styles.avatarImg}
+              contentFit="cover"
+              cachePolicy={IMAGE_CACHE_POLICY}
+              recyclingKey={`avatar-${post.author.id}`}
+            />
+          ) : (
+            <Text style={styles.avatarText}>{post.author.initials}</Text>
+          )}
+        </Pressable>
         <View style={styles.authorMeta}>
           <View style={styles.authorNameRow}>
             <Text style={[styles.authorName, { color: colors.foreground }]} numberOfLines={1}>
@@ -181,18 +191,35 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
         </Text>
       ) : null}
 
-      {/* Image — expo-image lazy-loads off the JS thread and caches to disk,
-          so it only downloads once per image even across app restarts. */}
-      {post.imageSource ? (
-        <Image
-          source={post.imageSource}
-          style={styles.image}
-          contentFit="cover"
-          transition={150}
-          cachePolicy={IMAGE_CACHE_POLICY}
-          placeholder={{ blurhash: BLURHASH_PLACEHOLDER }}
-          recyclingKey={post.id}
-        />
+      {/* Images — up to 3; single image fills width, multiple shown as a
+          horizontal scroll strip so none get cropped. */}
+      {post.imageSources && post.imageSources.length > 0 ? (
+        post.imageSources.length === 1 ? (
+          <Image
+            source={post.imageSources[0]}
+            style={styles.image}
+            contentFit="contain"
+            transition={150}
+            cachePolicy={IMAGE_CACHE_POLICY}
+            placeholder={{ blurhash: BLURHASH_PLACEHOLDER }}
+            recyclingKey={`${post.id}-0`}
+          />
+        ) : (
+          <View style={styles.multiImageRow}>
+            {post.imageSources.map((src, i) => (
+              <Image
+                key={i}
+                source={src}
+                style={[styles.multiImage, post.imageSources!.length === 2 ? styles.multiImage2 : styles.multiImage3]}
+                contentFit="cover"
+                transition={150}
+                cachePolicy={IMAGE_CACHE_POLICY}
+                placeholder={{ blurhash: BLURHASH_PLACEHOLDER }}
+                recyclingKey={`${post.id}-${i}`}
+              />
+            ))}
+          </View>
+        )
       ) : null}
 
       {/* Job details */}
@@ -346,6 +373,12 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
   },
   avatarText: {
     color: '#FFFFFF',
@@ -383,9 +416,26 @@ const styles = StyleSheet.create({
   },
   image: {
     width: '100%',
-    height: 180,
     borderRadius: 10,
     marginVertical: 10,
+    aspectRatio: 4 / 3,
+  },
+  multiImageRow: {
+    flexDirection: 'row',
+    gap: 4,
+    marginVertical: 10,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  multiImage: {
+    borderRadius: 0,
+    aspectRatio: 1,
+  },
+  multiImage2: {
+    flex: 1,
+  },
+  multiImage3: {
+    flex: 1,
   },
   detailsCard: {
     borderRadius: 10,
