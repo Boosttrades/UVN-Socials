@@ -169,7 +169,7 @@ router.post("/login", async (req, res) => {
   // Fetch profile for the response shape the Expo app expects
   const { data: profile } = await supabaseAdmin
     .from("Profiles")
-    .select("Id, name, username, email, profile_updated_at, created_at")
+    .select("Id, name, username, email, profile_image, profile_updated_at, created_at")
     .eq("Id", session.user.id)
     .maybeSingle();
 
@@ -182,6 +182,7 @@ router.post("/login", async (req, res) => {
       username: profile?.username ?? "",
       email: profile?.email ?? email,
       emailVerified: true,
+      profileImage: profile?.profile_image ?? null,
       profileUpdatedAt: profile?.profile_updated_at ?? null,
       createdAt: profile?.created_at ?? session.user.created_at,
     },
@@ -473,7 +474,7 @@ router.patch("/profile", requireAuth, async (req, res) => {
       profile_updated_at: nowIso,
     })
     .eq("Id", currentUser.id)
-    .select("Id, name, username, email, profile_updated_at, created_at")
+    .select("Id, name, username, email, profile_image, profile_updated_at, created_at")
     .single();
 
   if (updateError || !updated) {
@@ -487,11 +488,36 @@ router.patch("/profile", requireAuth, async (req, res) => {
     username: updated.username,
     email: updated.email,
     emailVerified: true,
+    profileImage: updated.profile_image ?? null,
     profileUpdatedAt: updated.profile_updated_at,
     createdAt: updated.created_at,
   };
 
   res.json({ message: "Profile updated", user: updatedUser });
+});
+
+// ─── PATCH /api/auth/profile-image ───────────────────────────────────────────
+
+router.patch("/profile-image", requireAuth, async (req, res) => {
+  const { imageUrl } = req.body;
+  if (!imageUrl || typeof imageUrl !== "string") {
+    res.status(400).json({ error: "imageUrl is required" });
+    return;
+  }
+
+  const currentUser = (req as any).currentUser;
+
+  const { error } = await supabaseAdmin
+    .from("Profiles")
+    .update({ profile_image: imageUrl })
+    .eq("Id", currentUser.id);
+
+  if (error) {
+    res.status(500).json({ error: "Failed to update profile photo" });
+    return;
+  }
+
+  res.json({ ok: true, profileImage: imageUrl });
 });
 
 // ─── HTML helper ─────────────────────────────────────────────────────────────

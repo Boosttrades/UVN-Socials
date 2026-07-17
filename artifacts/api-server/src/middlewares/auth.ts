@@ -7,6 +7,7 @@ export type AuthUser = {
   username: string;
   email: string;
   emailVerified: boolean;
+  profileImage: string | null;
   profileUpdatedAt: string | null;
   createdAt: string;
 };
@@ -23,7 +24,7 @@ async function resolveUser(token: string): Promise<AuthUser | null> {
   // Fetch full profile from Supabase Profiles table
   const { data: profile } = await supabaseAdmin
     .from("Profiles")
-    .select("Id, name, username, email, profile_updated_at, created_at")
+    .select("Id, name, username, email, profile_image, profile_updated_at, created_at")
     .eq("Id", user.id)
     .maybeSingle();
 
@@ -35,6 +36,7 @@ async function resolveUser(token: string): Promise<AuthUser | null> {
     username: profile.username ?? "",
     email: profile.email ?? user.email ?? "",
     emailVerified: !!user.email_confirmed_at,
+    profileImage: profile.profile_image ?? null,
     profileUpdatedAt: profile.profile_updated_at ?? null,
     createdAt: profile.created_at ?? user.created_at,
   };

@@ -10,6 +10,7 @@ export interface AuthUser {
   username: string;
   email: string;
   emailVerified: boolean;
+  profileImage: string | null;
   profileUpdatedAt: string | null;
   createdAt: string;
 }
@@ -34,6 +35,7 @@ interface AuthContextValue {
     username?: string;
     password: string;
   }) => Promise<{ message: string; user: AuthUser }>;
+  updateProfileImage: (imageUrl: string) => Promise<void>;
 }
 
 // ─── Context ─────────────────────────────────────────────────────────────────
@@ -170,6 +172,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [token]
   );
 
+  const updateProfileImage = useCallback(
+    async (imageUrl: string) => {
+      if (!token) throw new Error('Not authenticated');
+      await apiRequest('/auth/profile-image', {
+        method: 'PATCH',
+        body: { imageUrl },
+        token,
+      });
+      setUser((prev) => prev ? { ...prev, profileImage: imageUrl } : prev);
+    },
+    [token]
+  );
+
   const logout = useCallback(async () => {
     try {
       if (token) {
@@ -197,6 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         forgotPassword,
         resetPassword,
         updateProfile,
+        updateProfileImage,
       }}
     >
       {children}

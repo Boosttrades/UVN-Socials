@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   FlatList,
+  Image,
   Platform,
   Pressable,
   StyleSheet,
@@ -11,9 +14,11 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
 import { useFeed, useUserProfile } from '@/hooks/usePosts';
+import { apiRequest, getApiBase } from '@/utils/api';
 import FeedCard from '@/components/FeedCard';
 
 type ProfileTab = 'Updates' | 'Saved';
@@ -24,113 +29,218 @@ function getInitials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+/** Convert a stored object path like /objects/xxx into a full URL */
+function getStorageUrl(objectPath: string | null | undefined): string | null {
+  if (!objectPath) return null;
+  // Already a full URL
+  if (objectPath.startsWith('http')) return objectPath;
+  // objectPath is like /objects/xxx — storage route is /api/storage/objects/xxx
+  const base = getApiBase(); // e.g. https://domain/api
+  const path = objectPath.startsWith('/objects/')
+    ? objectPath.slice('/objects/'.length)
+    : objectPath.replace(/^\//, '');
+  return `${base}/storage/objects/${path}`;
+}
+
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, token, updateProfileImage } = useAuth();
   const { data: posts = [] } = useFeed();
   const { data: profile } = useUserProfile(user?.username);
   const [activeTab, setActiveTab] = useState<ProfileTab>('Updates');
+  const [uploading, setUploading] = useState(false);
 
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomPad = Platform.OS === 'web' ? 84 : insets.bottom + 60;
 
-  const initials = user ? getInitials(user.name) : '?';
   const displayName = user?.name ?? '';
   const handle = `@${user?.username ?? ''}`;
   const myPosts = user ? posts.filter((p) => p.author.id === user.id) : [];
   const savedPosts = posts.filter((p) => p.isBookmarked);
   const listData = activeTab === 'Updates' ? myPosts : savedPosts;
+  const photoUrl = getStorageUrl(user?.profileImage);
+
+  // ── Upload flow ─────────────────────────────────────────────────────────────
+
+  async function handlePickPhoto() {
+    if (Platform.OS !== 'web') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please allow photo access to set a profile picture.');
+        return;
+      }
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.85,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset = result.assets[0];
+    setUploading(true);
+
+    try {
+      // 1. Request presigned upload URL from our API
+      const ext = asset.uri.split('.').pop()?.toLowerCase() ?? 'jpg';
+      const contentType = ext === 'png' ? 'image/png' : 'image/jpeg';
+      const { uploadURL, objectPath } = await apiRequest<{
+        uploadURL: string;
+        objectPath: string;
+      }>('/storage/uploads/request-url', {
+        method: 'POST',
+        token,
+        body: {
+          name: `profile-${user?.id}.${ext}`,
+          size: asset.fileSize ?? 0,
+          contentType,
+        },
+      });
+
+      // 2. Upload directly to object storage via presigned PUT URL
+      const blob = await fetch(asset.uri).then((r) => r.blob());
+      const upload = await fetch(uploadURL, {
+        method: 'PUT',
+        headers: { 'Content-Type': contentType },
+        body: blob,
+      });
+
+      if (!upload.ok) throw new Error('Upload failed');
+
+      // 3. Save objectPath on the profile
+      await updateProfileImage(objectPath);
+    } catch (err: any) {
+      Alert.alert('Upload failed', err?.message ?? 'Something went wrong. Try again.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  // ── Avatar ──────────────────────────────────────────────────────────────────
+
+  const Avatar = (
+    <View style={styles.avatarContainer}>
+      <Pressable
+        onPress={handlePickPhoto}
+        disabled={uploading}
+        accessibilityLabel="Change profile photo"
+        accessibilityRole="button"
+        style={[styles.avatarRing, { borderColor: colors.primary }]}
+      >
+        {photoUrl ? (
+          <Image source={{ uri: photoUrl }} style={styles.avatarImage} />
+        ) : (
+          <View style={[styles.avatarInitials, { backgroundColor: colors.primary }]}>
+            <Text style={styles.avatarInitialsText}>
+              {user ? getInitials(user.name) : '?'}
+            </Text>
+          </View>
+        )}
+
+        {/* Camera overlay */}
+        <View style={[styles.cameraOverlay, { backgroundColor: 'rgba(0,0,0,0.45)' }]}>
+          {uploading ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Feather name="camera" size={20} color="#fff" />
+          )}
+        </View>
+      </Pressable>
+    </View>
+  );
+
+  // ── List header (everything above the posts) ────────────────────────────────
 
   const ListHeader = (
-    <View>
-      {/* Cover */}
-      <View style={[styles.cover, { backgroundColor: colors.primary, paddingTop: topInset }]}>
-        <Pressable
-          style={styles.settingsBtn}
-          hitSlop={8}
-          onPress={() => router.push('/settings' as any)}
-          accessibilityLabel="Settings"
-          accessibilityRole="button"
-        >
-          <Feather name="settings" size={20} color="#FFFFFF" />
-        </Pressable>
+    <View style={[styles.header, { paddingTop: topInset + 16 }]}>
+      {/* Settings — top right */}
+      <Pressable
+        style={styles.settingsBtn}
+        hitSlop={8}
+        onPress={() => router.push('/settings' as any)}
+        accessibilityLabel="Settings"
+        accessibilityRole="button"
+      >
+        <Feather name="settings" size={20} color={colors.foreground} />
+      </Pressable>
+
+      {/* Avatar */}
+      {Avatar}
+
+      {/* Name & handle */}
+      <Text style={[styles.name, { color: colors.foreground }]}>{displayName}</Text>
+      <Text style={[styles.handle, { color: colors.mutedForeground }]}>{handle}</Text>
+
+      {/* Stats */}
+      <View style={[styles.statsRow, { borderColor: colors.border }]}>
+        {[
+          { label: 'Updates', value: String(profile?.postsCount ?? myPosts.length) },
+          { label: 'Followers', value: String(profile?.followersCount ?? 0) },
+          { label: 'Following', value: String(profile?.followingCount ?? 0) },
+        ].map((s, i) => (
+          <View
+            key={s.label}
+            style={[
+              styles.stat,
+              i < 2 && { borderRightWidth: 1, borderRightColor: colors.border },
+            ]}
+          >
+            <Text style={[styles.statVal, { color: colors.primary }]}>{s.value}</Text>
+            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
+          </View>
+        ))}
       </View>
 
-      <View style={[styles.body, { backgroundColor: colors.background }]}>
-        {/* Avatar overlapping cover */}
-        <View style={styles.avatarRow}>
-          <View style={styles.avatarWrap}>
-            <View style={[styles.avatar, { backgroundColor: colors.primary, borderColor: colors.background }]}>
-              <Text style={styles.avatarText}>{initials}</Text>
-            </View>
-            <Pressable style={[styles.cameraBtn, { backgroundColor: colors.primary, borderColor: colors.background }]}>
-              <Feather name="camera" size={11} color="#FFFFFF" />
-            </Pressable>
-          </View>
-          <TouchableOpacity
-            style={[styles.editBtn, { backgroundColor: colors.muted, borderColor: colors.primary }]}
-            onPress={() => router.push('/edit-profile' as any)}
-          >
-            <Text style={[styles.editBtnText, { color: colors.primary }]}>Edit Profile</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Name & handle */}
-        <View style={styles.nameRow}>
-          <Text style={[styles.name, { color: colors.foreground }]}>{displayName}</Text>
-        </View>
-        <Text style={[styles.handle, { color: colors.mutedForeground }]}>{handle}</Text>
-
-        {/* Stats */}
-        <View style={[styles.statsRow, { borderColor: colors.border }]}>
-          {[
-            { label: 'Updates', value: String(profile?.postsCount ?? myPosts.length) },
-            { label: 'Followers', value: String(profile?.followersCount ?? 0) },
-            { label: 'Following', value: String(profile?.followingCount ?? 0) },
-          ].map((s, i) => (
-            <Pressable
-              key={s.label}
-              style={[styles.stat, i < 2 && { borderRightWidth: 1, borderRightColor: colors.border }]}
-            >
-              <Text style={[styles.statVal, { color: colors.primary }]}>{s.value}</Text>
-              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-
-        {/* Share button */}
-        <TouchableOpacity style={[styles.shareBtn, { borderColor: colors.border }]}>
-          <Feather name="share-2" size={15} color={colors.foreground} />
-          <Text style={[styles.shareBtnText, { color: colors.foreground }]}>Share Profile</Text>
+      {/* Action buttons */}
+      <View style={styles.actionsRow}>
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.actionBtnPrimary, { backgroundColor: colors.primary }]}
+          onPress={() => router.push('/edit-profile' as any)}
+        >
+          <Feather name="edit-2" size={14} color="#fff" />
+          <Text style={styles.actionBtnPrimaryText}>Edit Profile</Text>
         </TouchableOpacity>
 
-        {/* Content tabs */}
-        <View style={[styles.profileTabRow, { borderBottomColor: colors.border }]}>
-          {(['Updates', 'Saved'] as ProfileTab[]).map((tab) => {
-            const active = tab === activeTab;
-            return (
-              <Pressable
-                key={tab}
-                onPress={() => setActiveTab(tab)}
-                style={[styles.profileTab, { borderBottomColor: active ? colors.primary : 'transparent' }]}
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.actionBtnOutline, { borderColor: colors.border }]}
+        >
+          <Feather name="share-2" size={14} color={colors.foreground} />
+          <Text style={[styles.actionBtnOutlineText, { color: colors.foreground }]}>Share</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Content tabs */}
+      <View style={[styles.tabRow, { borderBottomColor: colors.border }]}>
+        {(['Updates', 'Saved'] as ProfileTab[]).map((tab) => {
+          const active = tab === activeTab;
+          return (
+            <Pressable
+              key={tab}
+              onPress={() => setActiveTab(tab)}
+              style={[
+                styles.tab,
+                { borderBottomColor: active ? colors.primary : 'transparent' },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  {
+                    color: active ? colors.primary : colors.mutedForeground,
+                    fontFamily: active ? 'Inter_600SemiBold' : 'Inter_400Regular',
+                  },
+                ]}
               >
-                <Text
-                  style={[
-                    styles.profileTabText,
-                    {
-                      color: active ? colors.primary : colors.mutedForeground,
-                      fontFamily: active ? 'Inter_600SemiBold' : 'Inter_400Regular',
-                    },
-                  ]}
-                >
-                  {tab}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
+                {tab}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
     </View>
   );
@@ -165,96 +275,156 @@ export default function ProfileScreen() {
   );
 }
 
+const AVATAR_SIZE = 112;
+
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  cover: {
-    height: 130,
-    alignItems: 'flex-end',
-    paddingRight: 16,
-    paddingBottom: 12,
-    justifyContent: 'flex-end',
+
+  header: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    position: 'relative',
   },
+
   settingsBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  body: { paddingHorizontal: 16 },
-  avatarRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    marginTop: -38,
-    marginBottom: 12,
-  },
-  avatarWrap: { position: 'relative' },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-  },
-  avatarText: { color: '#FFFFFF', fontSize: 26, fontFamily: 'Inter_700Bold' },
-  cameraBtn: {
     position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    top: 20,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
   },
-  editBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderRadius: 20,
-    borderWidth: 1,
+
+  // ── Avatar ──────────────────────────────────────────────────────────────────
+  avatarContainer: {
+    marginBottom: 16,
   },
-  editBtnText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
-  nameRow: { flexDirection: 'row', alignItems: 'center' },
-  name: { fontSize: 20, fontFamily: 'Inter_700Bold' },
-  handle: { fontSize: 14, fontFamily: 'Inter_400Regular', marginTop: 2, marginBottom: 16 },
+  avatarRing: {
+    width: AVATAR_SIZE + 6,
+    height: AVATAR_SIZE + 6,
+    borderRadius: (AVATAR_SIZE + 6) / 2,
+    borderWidth: 3,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarImage: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+  },
+  avatarInitials: {
+    width: AVATAR_SIZE,
+    height: AVATAR_SIZE,
+    borderRadius: AVATAR_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitialsText: {
+    color: '#fff',
+    fontSize: 36,
+    fontFamily: 'Inter_700Bold',
+  },
+  cameraOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: AVATAR_SIZE * 0.35,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Identity ─────────────────────────────────────────────────────────────
+  name: {
+    fontSize: 22,
+    fontFamily: 'Inter_700Bold',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  handle: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+
+  // ── Stats ────────────────────────────────────────────────────────────────
   statsRow: {
     flexDirection: 'row',
     borderWidth: 1,
-    borderRadius: 14,
-    marginBottom: 14,
+    borderRadius: 16,
+    width: '100%',
     overflow: 'hidden',
+    marginBottom: 16,
   },
-  stat: { flex: 1, alignItems: 'center', paddingVertical: 12 },
-  statVal: { fontSize: 18, fontFamily: 'Inter_700Bold' },
+  stat: { flex: 1, alignItems: 'center', paddingVertical: 14 },
+  statVal: { fontSize: 20, fontFamily: 'Inter_700Bold' },
   statLabel: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 2 },
-  shareBtn: {
+
+  // ── Action buttons ────────────────────────────────────────────────────────
+  actionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    width: '100%',
+    marginBottom: 20,
+  },
+  actionBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    gap: 6,
     paddingVertical: 11,
     borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 16,
   },
-  shareBtnText: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
-  profileTabRow: {
+  actionBtnPrimary: {},
+  actionBtnPrimaryText: {
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  actionBtnOutline: {
+    borderWidth: 1,
+  },
+  actionBtnOutlineText: {
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+  },
+
+  // ── Content tabs ─────────────────────────────────────────────────────────
+  tabRow: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    marginHorizontal: -16,
+    alignSelf: 'stretch',
+    marginLeft: -20,
+    marginRight: -20,
+    paddingLeft: 20,
+    paddingRight: 20,
+    marginBottom: 0,
   },
-  profileTab: {
+  tab: {
     flex: 1,
     alignItems: 'center',
     paddingVertical: 14,
     borderBottomWidth: 2,
   },
-  profileTabText: { fontSize: 14 },
-  empty: { alignItems: 'center', paddingTop: 60, paddingHorizontal: 32, gap: 8 },
+  tabText: { fontSize: 14 },
+
+  // ── Empty ────────────────────────────────────────────────────────────────
+  empty: {
+    alignItems: 'center',
+    paddingTop: 60,
+    paddingHorizontal: 32,
+    gap: 8,
+  },
   emptyTitle: { fontSize: 16, fontFamily: 'Inter_600SemiBold' },
-  emptyHint: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 20 },
+  emptyHint: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
 });
