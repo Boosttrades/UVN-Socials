@@ -10,7 +10,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@google-cloud/storage": "^7.21.0",
     "@node-rs/argon2": "^2.0.2",
     "@supabase/supabase-js": "^2.110.5",
     "@workspace/api-zod": "workspace:*",
@@ -19,7 +18,6 @@
     "cors": "^2.8.6",
     "drizzle-orm": "catalog:",
     "express": "^5.2.1",
-    "google-auth-library": "^10.9.0",
     "pino": "^9.14.0",
     "pino-http": "^10.5.0",
     "resend": "^6.17.2",

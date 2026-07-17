@@ -1,90 +1,123 @@
 # Ughelli Vibes TV — Build Status
 
-A local news network app for Ughelli, Nigeria (X-inspired interaction patterns: tap a card for detail, inline replies, comment threads, emergency banner). This file is a snapshot for anyone picking up the build — **update it at every checkpoint** so it never goes stale.
+A local news network app for Ughelli, Nigeria. This file is the handoff guide — **read this first** before touching anything.
 
-Last updated: July 17, 2026 (rev 6)
+Last updated: July 17, 2026 (rev 7)
 
-## Required Secrets & Environment Variables
+---
 
-These must be re-entered on any Replit account or environment that runs this app. All user data lives in Supabase — switching accounts just requires adding these values again.
+## ⚠️ NOTHING IS STORED ON REPLIT
 
-| Name | Kind | Where to find it | Required? |
-|------|------|-----------------|-----------|
-| `SUPABASE_URL` | Secret | Supabase Dashboard → Project Settings → API → Project URL | ✅ Yes |
-| `SUPABASE_ANON_KEY` | Secret | Supabase Dashboard → Project Settings → API → anon public | ✅ Yes |
-| `SUPABASE_SERVICE_ROLE_KEY` | Secret | Supabase Dashboard → Project Settings → API → service_role | ✅ Yes |
-| `RESEND_API_KEY` | Secret | resend.com → API Keys | ✅ Yes |
-| `SESSION_SECRET` | Secret | Any long random string (64+ hex chars) | ✅ Yes |
-| `FROM_EMAIL` | Env var | Your verified Resend sender (e.g. `noreply@yourdomain.com`) | ✅ Yes |
-| `SUPABASE_DB_PASSWORD` | Secret | Supabase Dashboard → Project Settings → Database | ⚪ Optional — only for direct Postgres access via psql/TablePlus |
+Every single piece of data — users, posts, images, sessions — lives in external services that you own. **This Replit account is just the host for the running code.** You can move to a new Replit account any time and zero data is lost.
 
-> **Switching Replit accounts?** Import the repo from GitHub → add the 6 required items above → start the two workflows. Users and data stay in Supabase untouched.
+| What | Where | Account |
+|------|-------|---------|
+| User accounts & passwords | Supabase Auth | Your Supabase project |
+| Posts, comments, likes, bookmarks, follows, notifications | Supabase PostgreSQL | Your Supabase project |
+| Profile photos & post images | Supabase Storage (`media` bucket) | Your Supabase project |
+| Auth sessions (Bearer tokens) | Supabase Auth | Your Supabase project |
 
-## What's real right now
+There is **no Replit Database**, **no Replit Object Storage**, **no Replit Postgres** in use. The Replit sidecar storage that was scaffolded originally has been completely removed from the codebase.
 
-- **Accounts & login** — signup, login with **email or username** (no `@` needed), logout, email verification (via Resend), resend-verification flow. Argon2id password hashing, DB-backed sessions (30-day Bearer tokens). Login screen has a **show/hide password toggle** (👁️ icon). See `contexts/AuthContext.tsx` and `artifacts/api-server/src/routes/auth.ts`.
-- **Forgot / reset password** — "Forgot password?" on the login screen → `app/auth/forgot-password.tsx` → email with reset link → `app/auth/reset-password.tsx?token=...`. Reset tokens expire in 1 hour; resetting deletes all existing sessions.
-- **Username handles** — enforced unique by DB + signup API (`409 Username is already taken`); the signup form shows the `@` prefix inline.
-- **Edit profile** — `app/edit-profile.tsx`. Change name and/or username with password confirmation. Limited to once every 14 days per account (countdown shown in UI; `429 PROFILE_EDIT_COOLDOWN` enforced server-side).
-- **Profile photo** — tap the camera overlay on your avatar in the Profile tab to pick a photo. Uploads via presigned URL to object storage; stored as an object path in `Profiles.profile_image`; served through `GET /api/storage/objects/*`. Photo persists across sessions.
-- **Profile — Share button** — the Share button on the Profile tab opens the native OS share sheet with your name and handle, so you can send it via WhatsApp, copy it, etc.
-- **Settings screen** — shows real account info (name, `@username`, email). "Sign Out" calls `logout()`. "Change Password" routes to forgot-password.
-- **Dark mode** — Appearance section in Settings (Light / Dark / System), backed by `contexts/ThemeContext.tsx`, persisted to AsyncStorage.
-- **Posting** — the Create tab posts to `POST /api/posts`. Posts can have a headline, details body, optional photo, and a category. A failed request shows an inline error.
-- **@mentions in posts** — type `@` anywhere in the Details field while creating a post and a horizontal chip strip appears showing matching users. Tap a chip to insert `@username` into the text. When the post is published, the backend parses all `@username` patterns and fires a **mention notification** to each mentioned user (no self-mentions, no duplicates). Users appear in the Activity tab under the Mentions filter.
-- **Photo uploads on posts** — the Create screen's "Add a photo" picks an image, compresses it to 1080px/0.7q, uploads via presigned URL, then submits the URL as `imageUrl` on the post.
-- **Comments** — real backend, newest first. `GET/POST /api/posts/:postId/comments` with optional `replyToHandle`. Comment authors get a notification.
-- **Likes / bookmarks / shares** — real backend, toggleable per-user. Liking sends a notification to the post author. The feed returns live counts + `isLiked`/`isBookmarked` per caller. Optimistic cache updates via TanStack Query.
-- **Follow / followers** — `POST /api/users/:username/follow` toggles a Follows row. Following someone sends them a notification. `GET /api/users/:username` returns real counts and `isFollowing`.
-- **Feed ("For You")** — real posts from `GET /api/posts` via TanStack Query, newest first, pull-to-refresh, category filter.
-- **Profile** — real name/handle/avatar/post-count/followers/following. Updates and Saved tabs backed by live data.
-- **Discover / Search** — type anything in the search bar to search across **post headlines, body text, and author names/usernames** (Posts tab, client-side) or find people by name/username (People tab, server-side via `GET /api/users/search?q=`, case-insensitive partial match). Usernames are searchable — switch to the People tab. Tapping a person opens their public profile.
-- **Other users' profiles** — `app/user/[username].tsx`: avatar, name, handle, stats, their posts, Follow/Unfollow button.
-- **Activity / notifications** — real backend. Likes, comments, follows, and **@mentions** all create a Supabase `Notifications` row (fire-and-forget, no self-notifications). Activity tab shows 50 most-recent with actor name, time-ago, and unread dot. Filter tabs: All / Reactions / Follows / Mentions / System. Tapping marks read; "Mark all read" calls the batch endpoint. Unread count badge on the Activity tab icon updates every 30 s and on app foreground.
-- **Home header buttons** — bell → Activity, search → Discover.
-- **Emergency banner** — shown only when a real post has `isEmergency: true`.
-- **All data in Supabase** — no Replit Postgres. Tables: `Profiles`, `Post`, `Comments`, `Likes`, `Bookmarks`, `Follows`, `Notifications`.
+---
 
-## What's intentionally not built yet
+## Setting Up on a New Replit Account
 
-- **Comment likes** — the like count on comments is UI-only; not persisted.
-- **Resend domain verification** — Resend is in test mode; only the account owner's inbox (`iboosttradesupport@gmail.com`) receives emails. Add a domain at resend.com/domains and update `FROM_EMAIL` to unlock delivery to all users.
-- **Web version** — app is mobile-only (Expo Go); no web artifact yet.
+1. Fork / import this repo into the new Replit account
+2. Go to **Secrets** and add these 6 items (exact names matter):
 
-## Current project tasks (see task list for live status)
+| Secret name | Kind | Where to get it |
+|-------------|------|-----------------|
+| `SUPABASE_URL` | Secret | Supabase Dashboard → Project Settings → API → Project URL |
+| `SUPABASE_ANON_KEY` | Secret | Supabase Dashboard → Project Settings → API → anon public key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Secret | Supabase Dashboard → Project Settings → API → service_role key |
+| `RESEND_API_KEY` | Secret | resend.com → API Keys |
+| `SESSION_SECRET` | Secret | Any random 64-char hex string |
+| `FROM_EMAIL` | **Env var** (not Secret) | The verified sender address in your Resend account |
 
-- Push the database schema so posts, users, and sessions actually save — **proposed**
-- Let users upload profile photos and post images — **done**
-- Verify sending domain so all users can receive verification emails — **proposed**
+3. Start the two workflows:
+   - **API Server** (`artifacts/api-server: API Server`)
+   - **Expo** (`artifacts/ughelli-vibes: expo`)
+4. Done — all users, posts, and images are already there from Supabase. Nothing to migrate.
 
-## Key files if you're picking this up
+> `SUPABASE_DB_PASSWORD` is optional — only needed if you want to connect to the database directly via psql or TablePlus. The app itself never uses it.
 
-- `artifacts/api-server/src/routes/{auth,posts,users,storage,notifications}.ts` — API routes
-- `artifacts/api-server/src/lib/supabase.ts` — Supabase singleton (with `ws` WebSocket polyfill)
-- `artifacts/api-server/src/lib/notifications.ts` — fire-and-forget notification helper
-- `artifacts/api-server/src/middlewares/auth.ts` — `requireAuth` / `optionalAuth`
-- `artifacts/ughelli-vibes/contexts/AuthContext.tsx` — login/logout/session state, `updateProfileImage()`
-- `artifacts/ughelli-vibes/contexts/NotificationsContext.tsx` — shared notifications state, 30s poll, foreground re-fetch, unread count for tab badge
-- `artifacts/ughelli-vibes/contexts/ThemeContext.tsx` — Appearance preference
-- `artifacts/ughelli-vibes/hooks/usePosts.ts` — all feed/post/user/search hooks + TanStack Query cache
-- `artifacts/ughelli-vibes/app/(tabs)/create.tsx` — post creation with @mention autocomplete + photo upload
-- `artifacts/ughelli-vibes/app/(tabs)/profile.tsx` — profile screen, avatar upload, share sheet
-- `artifacts/ughelli-vibes/app/(tabs)/discover.tsx` — search (posts + people)
-- `artifacts/ughelli-vibes/app/user/[username].tsx` — public profile screen
-- `artifacts/ughelli-vibes/app/post/[id].tsx` — post detail with comments/likes/shares
-- `artifacts/ughelli-vibes/app/edit-profile.tsx` — name/username edit with cooldown
-- `artifacts/ughelli-vibes/app/auth/login.tsx` — login (email or username, show/hide password)
-- `artifacts/ughelli-vibes/app/auth/{forgot-password,reset-password}.tsx` — password reset
+---
+
+## What's built
+
+- **Login** — email **or** username (no `@` needed), show/hide password toggle
+- **Signup** — email verification required (sent via Resend)
+- **Forgot / reset password** — email link, 1-hour token, deletes old sessions
+- **Edit profile** — name and username, password confirmation, 14-day cooldown
+- **Profile photo** — tap avatar camera overlay → picks from library → uploads to Supabase Storage → permanent CDN URL stored in `Profiles.profile_image`
+- **Share profile** — native OS share sheet with name and handle
+- **Create post** — 6 post types (Update, Incident, Job, Event, Business, Traffic), optional photo upload, category tags
+- **@mentions** — type `@` in the Details field → autocomplete chip strip → inserts `@username` → backend parses all mentions on publish and fires mention notifications to each tagged user
+- **Post photo upload** — compress to 1080px, presigned PUT directly to Supabase Storage, permanent CDN URL stored on the post
+- **Likes / bookmarks / shares** — real backend, per-user, optimistic UI updates
+- **Comments** — threaded, newest-first, with optional `replyToHandle`
+- **Follow / unfollow** — real `Follows` table, live counts on profiles
+- **Feed** — paginated, newest-first, pull-to-refresh, category filter
+- **Discover / search** — Posts tab searches headline + body + author name/username; People tab is server-side by name/username
+- **Other users' profiles** — public screen with stats and posts, Follow button
+- **Activity / notifications** — likes, comments, follows, mentions all create rows in Supabase `Notifications`. Tab badge shows unread count (polls every 30 s, re-fetches on app foreground). Filter tabs: All / Reactions / Follows / Mentions / System
+- **Dark mode** — Light / Dark / System, persisted to AsyncStorage
+- **Emergency banner** — shows only when a post has `isEmergency: true`
+
+---
+
+## What's not built yet
+
+- **Resend domain verification** — Resend is in test mode; only the account owner's inbox receives verification and password-reset emails. To unlock delivery to all users: add a domain at resend.com/domains, verify the DNS records, then update `FROM_EMAIL` to an address on that domain.
+- **Comment likes** — the like count on comments is UI-only, not persisted.
+- **Web version** — mobile-only (Expo Go) for now.
+
+---
+
+## Key files
+
+```
+artifacts/api-server/src/
+  routes/auth.ts          — login (email or username), signup, verify, reset password, profile patch
+  routes/posts.ts         — feed, create post (with @mention notification dispatch), like, bookmark, share, comments
+  routes/users.ts         — people search, public profile, follow/unfollow
+  routes/storage.ts       — presigned upload URL (Supabase Storage), legacy object redirect
+  routes/notifications.ts — list, mark read, mark all read
+  lib/supabase.ts         — Supabase admin client (ws polyfill for Node 20)
+  lib/notifications.ts    — fire-and-forget notification helper
+  lib/email.ts            — Resend integration (verification + password reset)
+  middlewares/auth.ts     — requireAuth / optionalAuth
+
+artifacts/ughelli-vibes/
+  contexts/AuthContext.tsx           — login/logout/session, updateProfileImage()
+  contexts/NotificationsContext.tsx  — shared notifications state, 30 s poll, unread count
+  contexts/ThemeContext.tsx          — appearance preference
+  hooks/usePosts.ts                  — all feed/post/user/search hooks + TanStack Query cache
+  app/(tabs)/create.tsx              — post creation with @mention autocomplete + photo upload
+  app/(tabs)/profile.tsx             — profile screen, avatar upload, share sheet
+  app/(tabs)/discover.tsx            — search (posts + people)
+  app/(tabs)/activity.tsx            — notifications list (reads from NotificationsContext)
+  app/(tabs)/_layout.tsx             — tab badge wired to unread notification count
+  app/user/[username].tsx            — public profile screen
+  app/post/[id].tsx                  — post detail with comments/likes/shares
+  app/edit-profile.tsx               — name/username edit with 14-day cooldown
+  app/auth/login.tsx                 — login screen (email or username, show/hide password)
+  app/auth/signup.tsx                — signup with inline @handle
+  app/auth/forgot-password.tsx       — request password reset email
+  app/auth/reset-password.tsx        — set new password from reset link
+```
+
+---
 
 ## Known gotchas
 
-- `@node-rs/argon2` is a native binary — must stay in the esbuild `external` list in `artifacts/api-server/build.mjs`, or the API server build breaks.
-- Resend test mode: only the account owner's inbox receives emails until a sending domain is verified.
-- The API server dev workflow needs `PORT=8080` injected via `artifact.toml`.
-- The 14-day profile-edit cooldown is enforced both client-side (UX) and server-side (source of truth).
-- After changing anything in `lib/db` or `lib/api-zod`, run `pnpm run typecheck:libs` from the repo root before typechecking `artifacts/api-server`.
-- The mobile client is Expo/React Native — use `expo-image-picker` + direct `fetch` PUT to the Supabase signed upload URL. Do not use `@workspace/object-storage-web` (Uppy/React-DOM, incompatible with RN).
-- All image storage now lives in **Supabase Storage** (`media` bucket). No Replit-specific env vars (`PRIVATE_OBJECT_DIR`, `PUBLIC_OBJECT_SEARCH_PATHS`) are needed. The bucket is auto-created on first server start.
-- Supabase table/column names use PascalCase (`Profiles`, `Id`, `Post`, etc.) — match exactly or you'll get "column does not exist" errors.
-- Node.js 20 lacks native WebSocket — the Supabase client needs `ws` polyfilled on `globalThis.WebSocket` before `createClient()` (already done in `src/lib/supabase.ts`). Upgrade to Node 22+ to remove this polyfill.
-- @mention detection in the create screen uses a trailing `/@(\w*)$/` regex on the body text — it catches typing at the end of the field, which is the 95% case. Mentions at mid-text positions won't trigger the autocomplete (the final parsed usernames in the post are still extracted server-side regardless).
+- **`@node-rs/argon2` is a native binary** — it must stay in the `external` list in `artifacts/api-server/build.mjs`. Removing it breaks the build.
+- **Resend test mode** — until a domain is verified, only the Supabase project owner's email receives messages. This affects signup verification and password reset for all other users.
+- **Supabase `media` bucket** — created automatically on first server start. No manual setup needed in the Supabase dashboard.
+- **Supabase PascalCase** — table and column names use PascalCase (`Profiles`, `Id`, `Post`, etc.). Match this exactly in any raw Supabase queries or you'll get "column does not exist" errors.
+- **Node.js 20 WebSocket** — Node 20 has no native WebSocket. The Supabase client needs `ws` polyfilled on `globalThis.WebSocket` before `createClient()` is called. This is already done in `src/lib/supabase.ts`. Safe to remove if you upgrade to Node 22+.
+- **`PORT` env var** — the API server workflow injects `PORT=8080` via `artifact.toml`. Without it the server throws on startup.
+- **14-day profile-edit cooldown** — enforced both client-side (UX countdown) and server-side (`429 PROFILE_EDIT_COOLDOWN`). Client-side is just convenience; the API is the source of truth.
+- **@mention autocomplete** — uses a trailing `/@(\w*)$/` regex on the body text as-you-type. Catches typing at the end of the field (the 95% case). Mid-text mentions don't show autocomplete but are still parsed server-side when the post is published.
+- **After changing `lib/db` or `lib/api-zod`** — run `pnpm run typecheck:libs` from the repo root before typechecking `artifacts/api-server`, or tsc reports stale "Output file has not been built from source" errors.
