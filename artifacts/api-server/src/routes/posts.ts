@@ -48,8 +48,7 @@ router.get("/", optionalAuth, async (req, res) => {
 
   const { data: rawPosts, error: postsError } = await query;
   if (postsError) {
-    console.error("[posts] Supabase error:", JSON.stringify(postsError));
-    res.status(500).json({ error: "Failed to fetch posts", detail: postsError.message, code: postsError.code });
+    res.status(500).json({ error: "Failed to fetch posts" });
     return;
   }
 
