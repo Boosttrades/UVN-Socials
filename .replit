@@ -59,7 +59,7 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.shared]
-FROM_EMAIL = "onboarding@resend.dev"
+FROM_EMAIL = "Onboardingresend.dev"
 
 [nix]
 channel = "stable-25_05"
