@@ -44,7 +44,7 @@ export default function DiscoverScreen() {
           p.headline.toLowerCase().includes(q) ||
           (p.body ?? '').toLowerCase().includes(q) ||
           p.author.name.toLowerCase().includes(q) ||
-          p.author.username.toLowerCase().includes(q)
+          p.author.handle.toLowerCase().includes(q)
       )
     : [];
 
@@ -172,6 +172,7 @@ export default function DiscoverScreen() {
                 <TouchableOpacity
                   key={cat.id}
                   style={[styles.catCard, { backgroundColor: cat.bgColor }]}
+                  onPress={() => router.push({ pathname: '/(tabs)', params: { category: cat.name } } as any)}
                 >
                   <View style={[styles.catIcon, { backgroundColor: cat.color }]}>
                     <Feather name={cat.icon as any} size={18} color="#FFFFFF" />

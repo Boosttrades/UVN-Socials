@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   FlatList,
   Keyboard,
@@ -54,6 +54,8 @@ export default function PostDetailScreen() {
 
   const [replyText, setReplyText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [likedCommentIds, setLikedCommentIds] = useState<Set<string>>(new Set());
+  const replyInputRef = useRef<TextInput>(null);
 
   const { data: comments = [], isLoading: commentsLoading } = useComments(id);
   const createComment = useCreateComment(id);
@@ -249,7 +251,16 @@ export default function PostDetailScreen() {
             <View style={styles.detailRow}><Feather name="briefcase" size={13} color={colors.mutedForeground} /><Text style={[styles.detailText, { color: colors.mutedForeground }]}>{safePost.jobDetails.company}</Text></View>
             <View style={styles.detailRow}><Feather name="map-pin" size={13} color={colors.mutedForeground} /><Text style={[styles.detailText, { color: colors.mutedForeground }]}>{safePost.jobDetails.location}</Text></View>
             {safePost.jobDetails.salary && <View style={styles.detailRow}><Feather name="tag" size={13} color={colors.primary} /><Text style={[styles.detailText, { color: colors.primary, fontFamily: 'Inter_600SemiBold' }]}>{safePost.jobDetails.salary}</Text></View>}
-            <TouchableOpacity style={[styles.applyBtn, { backgroundColor: colors.primary }]}>
+            <TouchableOpacity
+              style={[styles.applyBtn, { backgroundColor: colors.primary }]}
+              onPress={() => {
+                const company = safePost.jobDetails?.company ?? 'the company';
+                Share.share({
+                  message: `Job opportunity at ${company}: ${safePost.headline}\n\nShared via Ughelli Vibes TV`,
+                  title: safePost.headline,
+                });
+              }}
+            >
               <Text style={styles.applyBtnText}>Apply Now</Text>
             </TouchableOpacity>
           </View>
@@ -280,7 +291,7 @@ export default function PostDetailScreen() {
             <Ionicons name={liked ? 'thumbs-up' : 'thumbs-up-outline'} size={20} color={liked ? colors.primary : colors.mutedForeground} />
             <Text style={[styles.actionText, { color: liked ? colors.primary : colors.mutedForeground }]}>Like</Text>
           </Pressable>
-          <Pressable style={styles.actionBtn} onPress={() => {}} accessibilityLabel="Comment" accessibilityRole="button">
+          <Pressable style={styles.actionBtn} onPress={() => replyInputRef.current?.focus()} accessibilityLabel="Comment" accessibilityRole="button">
             <Ionicons name="chatbubble-outline" size={19} color={colors.mutedForeground} />
             <Text style={[styles.actionText, { color: colors.mutedForeground }]}>Comment</Text>
           </Pressable>
@@ -355,9 +366,25 @@ export default function PostDetailScreen() {
                   <Feather name="corner-up-left" size={13} color={colors.mutedForeground} />
                   <Text style={[styles.commentActionText, { color: colors.mutedForeground }]}>Reply</Text>
                 </Pressable>
-                <Pressable style={styles.commentActionBtn}>
-                  <Ionicons name="thumbs-up-outline" size={13} color={colors.mutedForeground} />
-                  <Text style={[styles.commentActionText, { color: colors.mutedForeground }]}>{item.likes}</Text>
+                <Pressable
+                  style={styles.commentActionBtn}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setLikedCommentIds((prev) => {
+                      const next = new Set(prev);
+                      next.has(item.id) ? next.delete(item.id) : next.add(item.id);
+                      return next;
+                    });
+                  }}
+                >
+                  <Ionicons
+                    name={likedCommentIds.has(item.id) ? 'thumbs-up' : 'thumbs-up-outline'}
+                    size={13}
+                    color={likedCommentIds.has(item.id) ? colors.primary : colors.mutedForeground}
+                  />
+                  <Text style={[styles.commentActionText, { color: likedCommentIds.has(item.id) ? colors.primary : colors.mutedForeground }]}>
+                    {item.likes + (likedCommentIds.has(item.id) ? 1 : 0)}
+                  </Text>
                 </Pressable>
               </View>
             </View>
@@ -382,6 +409,7 @@ export default function PostDetailScreen() {
             <Text style={styles.myAvatarText}>{user ? getInitials(user.name) : '?'}</Text>
           </View>
           <TextInput
+            ref={replyInputRef}
             value={replyText}
             onChangeText={setReplyText}
             placeholder="Add a comment..."

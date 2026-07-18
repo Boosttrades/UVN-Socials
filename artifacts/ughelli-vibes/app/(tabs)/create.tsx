@@ -344,26 +344,31 @@ export default function CreateScreen() {
                 )}
               </View>
 
-              {/* Attach photo */}
-              {imageUri ? (
-                <View style={styles.imagePreviewWrap}>
-                  <Image source={{ uri: imageUri }} style={styles.imagePreview} resizeMode="cover" />
-                  <Pressable
-                    style={[styles.removeImageBtn, { backgroundColor: 'rgba(0,0,0,0.55)' }]}
-                    onPress={() => setImageUri(null)}
-                    hitSlop={8}
-                  >
-                    <Feather name="x" size={14} color="#FFFFFF" />
-                  </Pressable>
+              {/* Attach photos (up to 3) */}
+              {imageUris.length > 0 && (
+                <View style={styles.imagePreviewRow}>
+                  {imageUris.map((uri, index) => (
+                    <View key={uri} style={styles.imagePreviewWrap}>
+                      <Image source={{ uri }} style={styles.imagePreview} contentFit="cover" />
+                      <Pressable
+                        style={[styles.removeImageBtn, { backgroundColor: 'rgba(0,0,0,0.55)' }]}
+                        onPress={() => handleRemoveImage(index)}
+                        hitSlop={8}
+                      >
+                        <Feather name="x" size={14} color="#FFFFFF" />
+                      </Pressable>
+                    </View>
+                  ))}
                 </View>
-              ) : (
+              )}
+              {imageUris.length < MAX_IMAGES && (
                 <Pressable
                   style={[styles.attachRow, { borderColor: colors.border, backgroundColor: colors.muted }]}
                   onPress={handlePickImage}
                 >
                   <Feather name="image" size={18} color={colors.mutedForeground} />
                   <Text style={[styles.attachText, { color: colors.mutedForeground }]}>
-                    Add a photo
+                    {imageUris.length === 0 ? 'Add a photo' : `Add another photo (${imageUris.length}/${MAX_IMAGES})`}
                   </Text>
                 </Pressable>
               )}
@@ -537,15 +542,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
   },
+  imagePreviewRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
   imagePreviewWrap: {
+    flex: 1,
     borderRadius: 12,
     overflow: 'hidden',
-    marginBottom: 20,
     position: 'relative',
+    minHeight: 120,
   },
   imagePreview: {
     width: '100%',
-    height: 180,
+    height: 120,
   },
   removeImageBtn: {
     position: 'absolute',

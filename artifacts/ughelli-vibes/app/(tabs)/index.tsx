@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import FeedCard from '@/components/FeedCard';
@@ -20,6 +20,7 @@ import OfflineBanner from '@/components/OfflineBanner';
 import { SkeletonFeedList } from '@/components/SkeletonFeedCard';
 import { ALL_CATEGORIES, type PostCategory } from '@/constants/mockData';
 import { useFeed } from '@/hooks/usePosts';
+import { useNotifications } from '@/contexts/NotificationsContext';
 
 type FilterOption = 'All' | PostCategory;
 const FILTER_TABS: FilterOption[] = ['All', ...ALL_CATEGORIES];
@@ -28,8 +29,17 @@ export default function ForYouScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { category: categoryParam } = useLocalSearchParams<{ category?: string }>();
+  const { unreadCount } = useNotifications();
   const [activeFilter, setActiveFilter] = useState<FilterOption>('All');
   const [refreshing, setRefreshing] = useState(false);
+
+  // Deep-link from Discover: apply category param when it changes
+  useEffect(() => {
+    if (categoryParam && (ALL_CATEGORIES as string[]).includes(categoryParam)) {
+      setActiveFilter(categoryParam as PostCategory);
+    }
+  }, [categoryParam]);
   const {
     data: posts = [],
     isLoading,
@@ -93,7 +103,9 @@ export default function ForYouScreen() {
             >
               <Feather name="bell" size={22} color={colors.foreground} />
             </Pressable>
-            <View style={[styles.notifBadge, { backgroundColor: colors.emergency }]} />
+            {unreadCount > 0 && (
+              <View style={[styles.notifBadge, { backgroundColor: colors.emergency }]} />
+            )}
           </View>
           <Pressable
             style={styles.iconBtn}
