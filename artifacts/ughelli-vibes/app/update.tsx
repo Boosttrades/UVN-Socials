@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -94,10 +94,6 @@ export default function UpdateScreen() {
     }
   }, [installedVersion]);
 
-  useEffect(() => {
-    checkForUpdates();
-  }, [checkForUpdates]);
-
   // ── Download & Install ────────────────────────────────────────────────────
 
   async function downloadAndInstall(info: VersionInfo) {
@@ -168,6 +164,27 @@ export default function UpdateScreen() {
   function renderContent() {
     switch (state.kind) {
       case 'idle':
+        return (
+          <View style={styles.centreBlock}>
+            <View style={[styles.bigIcon, { backgroundColor: colors.primary + '18' }]}>
+              <Feather name="download-cloud" size={48} color={colors.primary} />
+            </View>
+            <Text style={[styles.bigTitle, { color: colors.foreground }]}>
+              Check for Updates
+            </Text>
+            <Text style={[styles.bigSub, { color: colors.mutedForeground }]}>
+              Currently installed: {installedVersion}
+            </Text>
+            <Pressable
+              style={[styles.primaryBtn, { backgroundColor: colors.primary, marginTop: 8 }]}
+              onPress={checkForUpdates}
+            >
+              <Feather name="refresh-cw" size={18} color="#FFFFFF" />
+              <Text style={styles.primaryBtnText}>Check for Updates</Text>
+            </Pressable>
+          </View>
+        );
+
       case 'checking':
         return (
           <View style={styles.centreBlock}>
