@@ -6,6 +6,7 @@ import usersRouter from "./users";
 import storageRouter from "./storage";
 import supabaseRouter from "./supabase";
 import notificationsRouter from "./notifications";
+import versionRouter from "./version";
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use("/users", usersRouter);
 router.use("/storage", storageRouter);
 router.use("/supabase", supabaseRouter);
 router.use("/notifications", notificationsRouter);
+router.use(versionRouter);
 
 export default router;

@@ -226,6 +226,12 @@ export default function SettingsScreen() {
           <SettingRow icon="flag" label="Report a Problem" />
           <SettingRow icon="info" label="About Ughelli Vibes TV" />
           <SettingRow icon="star" label="Rate the App" />
+          <SettingRow
+            icon="download"
+            label="Check for Updates"
+            onPress={() => router.push('/update' as any)}
+            tintColor="#0F8A5F"
+          />
         </View>
 
         {/* Version */}
