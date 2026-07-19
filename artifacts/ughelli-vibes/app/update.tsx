@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  type LayoutChangeEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -63,6 +64,11 @@ export default function UpdateScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const [state, setState] = useState<UpdateState>({ kind: 'idle' });
+  const [trackWidth, setTrackWidth] = useState(0);
+
+  const onTrackLayout = useCallback((e: LayoutChangeEvent) => {
+    setTrackWidth(e.nativeEvent.layout.width);
+  }, []);
 
   const installedVersion =
     Application.nativeApplicationVersion ?? '1.0.0';
@@ -300,11 +306,14 @@ export default function UpdateScreen() {
             </Text>
 
             {/* Progress bar */}
-            <View style={[styles.progressTrack, { backgroundColor: colors.muted }]}>
+            <View
+              style={[styles.progressTrack, { backgroundColor: colors.muted }]}
+              onLayout={onTrackLayout}
+            >
               <View
                 style={[
                   styles.progressFill,
-                  { backgroundColor: colors.primary, width: `${pct}%` as any },
+                  { backgroundColor: colors.primary, width: Math.round(trackWidth * progress) },
                 ]}
               />
             </View>

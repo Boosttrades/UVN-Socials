@@ -1,32 +1,22 @@
-import { Platform, ScrollView, ScrollViewProps } from 'react-native';
-import {
-  KeyboardAwareScrollView,
-  KeyboardAwareScrollViewProps,
-} from 'react-native-keyboard-controller';
+/**
+ * Keyboard-aware scroll view that works in both Expo Go and native builds.
+ * Uses React Native's built-in ScrollView — no native modules required.
+ */
+import { ScrollView, type ScrollViewProps } from 'react-native';
 
-type Props = KeyboardAwareScrollViewProps & ScrollViewProps;
+type Props = ScrollViewProps & {
+  /** Accepted but ignored — kept for API compatibility with the old version */
+  keyboardShouldPersistTaps?: 'always' | 'never' | 'handled';
+};
 
 export function KeyboardAwareScrollViewCompat({
   children,
   keyboardShouldPersistTaps = 'handled',
   ...props
 }: Props) {
-  if (Platform.OS === 'web') {
-    return (
-      <ScrollView
-        keyboardShouldPersistTaps={keyboardShouldPersistTaps}
-        {...props}
-      >
-        {children}
-      </ScrollView>
-    );
-  }
   return (
-    <KeyboardAwareScrollView
-      keyboardShouldPersistTaps={keyboardShouldPersistTaps}
-      {...props}
-    >
+    <ScrollView keyboardShouldPersistTaps={keyboardShouldPersistTaps} {...props}>
       {children}
-    </KeyboardAwareScrollView>
+    </ScrollView>
   );
 }

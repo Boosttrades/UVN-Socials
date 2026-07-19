@@ -17,7 +17,7 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { KeyboardAvoidingView } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import { CATEGORY_COLORS } from '@/constants/mockData';
 import { useAuth } from '@/contexts/AuthContext';

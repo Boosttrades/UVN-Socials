@@ -17,9 +17,16 @@
       "supportsTablet": false
     },
     "android": {
+      "package": "com.ughellivibes.tv",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#0F8A5F"
+      },
       "permissions": [
         "android.permission.REQUEST_INSTALL_PACKAGES",
-        "android.permission.READ_EXTERNAL_STORAGE"
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.INTERNET"
       ]
     },
     "web": {

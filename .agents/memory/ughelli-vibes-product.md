@@ -7,11 +7,16 @@ description: Core product decisions, inspiration, and architecture for Ughelli V
 X (Twitter) — interaction patterns: tap card → post detail, inline reply input at bottom, comment threads.
 
 ## Architecture
-- Expo (mobile-first), web preview via Expo web build
-- No backend in v1 — all data is mock in `constants/mockData.ts`
-- No AsyncStorage yet — all state in `useState`
-- pnpm monorepo: artifact at `artifacts/ughelli-vibes/`
-- Navigation: expo-router file-based routing, `app/(tabs)/` for 5 tabs, `app/post/[id].tsx` for post detail, `app/settings.tsx` for settings
+- Expo SDK 54, React Native 0.81.5, pnpm monorepo: artifact at `artifacts/ughelli-vibes/`
+- Navigation: expo-router file-based routing, `app/(tabs)/` for 5 tabs, `app/post/[id].tsx`, `app/user/[username].tsx`, `app/settings.tsx`, `app/update.tsx`
+- API server: Express 5 at `artifacts/api-server/`, Supabase as DB+storage
+- EAS Build configured: `artifacts/ughelli-vibes/eas.json`, Android package `com.ughellivibes.tv`
+
+## Native module constraints (Expo Go compatible)
+- `react-native-keyboard-controller` was REMOVED — not in Expo Go. Replaced with RN core `KeyboardAvoidingView` (same API). `KeyboardProvider` wrapper also removed from `_layout.tsx`.
+- `expo-glass-effect` was REMOVED — not in Expo Go. Tab layout now always uses `ClassicTabLayout` with `expo-blur` (BlurView) for iOS frosted glass. `NativeTabs` / `expo-router/unstable-native-tabs` also removed.
+- `expo-file-system/legacy` subpath REQUIRED for `cacheDirectory`, `createDownloadResumable`, `getContentUriAsync` — both v19 and v57 of expo-file-system use the new File/Directory class API as the default export; the old API lives at the `/legacy` subpath.
+- SDK 54 correct versions: `expo-application@~7.0.8`, `expo-file-system@~19.0.23`, `expo-intent-launcher@~13.0.8`
 
 ## Brand
 - Primary: #0F8A5F (Deep Emerald Green), Secondary: #066A46
@@ -34,5 +39,6 @@ X (Twitter) — interaction patterns: tap card → post detail, inline reply inp
 - `useSafeAreaInsets()` for all top/bottom padding; web gets 67px top / 84px bottom tab fallback
 - `Share` from react-native (built-in) for native share sheet — no expo-sharing needed
 - `useRouter()` from expo-router for programmatic navigation
+- Progress bars: use `onLayout` to capture track pixel width, compute fill as `Math.round(trackWidth * progress)` — percentage widths via string not reliable in RN
 
 **Why:** Consistency across all screens is critical for feel; always match existing patterns before inventing new ones.
