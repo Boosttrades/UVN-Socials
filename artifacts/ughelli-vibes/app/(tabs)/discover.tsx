@@ -102,17 +102,19 @@ export default function DiscoverScreen() {
                   </View>
                 ) : (
                   filteredPosts.map((post) => (
-                    <View
+                    <TouchableOpacity
                       key={post.id}
                       style={[styles.searchResult, { backgroundColor: colors.card, borderColor: colors.border }]}
+                      onPress={() => router.push(`/post/${post.id}` as any)}
+                      activeOpacity={0.75}
                     >
                       <Text style={[styles.searchResultHeadline, { color: colors.foreground }]} numberOfLines={2}>
-                        {post.headline}
+                        {post.headline || post.body || '(no headline)'}
                       </Text>
                       <Text style={[styles.searchResultMeta, { color: colors.mutedForeground }]}>
                         {post.author.name} · {post.timeAgo}
                       </Text>
-                    </View>
+                    </TouchableOpacity>
                   ))
                 )}
               </>

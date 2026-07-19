@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import ImageLightbox from '@/components/ImageLightbox';
 import { FlatList, Platform, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
@@ -22,6 +23,7 @@ export default function UserProfileScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { user, token } = useAuth();
+  const [profileLightbox, setProfileLightbox] = useState(false);
 
   const { data: profile, isLoading } = useUserProfile(username);
   const { data: posts = [] } = useFeed();
@@ -71,7 +73,11 @@ export default function UserProfileScreen() {
 
       <View style={[styles.body, { backgroundColor: colors.background }]}>
         <View style={styles.avatarRow}>
-          <View style={[styles.avatar, { backgroundColor: colors.primary, borderColor: colors.background }]}>
+          <Pressable
+            style={[styles.avatar, { backgroundColor: colors.primary, borderColor: colors.background }]}
+            onPress={() => { if (profile?.profileImage) setProfileLightbox(true); }}
+            accessibilityLabel="View profile photo"
+          >
             {profile?.profileImage ? (
               <Image
                 source={{ uri: profile.profileImage }}
@@ -82,7 +88,7 @@ export default function UserProfileScreen() {
             ) : (
               <Text style={styles.avatarText}>{initials}</Text>
             )}
-          </View>
+          </Pressable>
           {!isOwnProfile && (
             <TouchableOpacity
               style={[
@@ -125,25 +131,32 @@ export default function UserProfileScreen() {
   );
 
   return (
-    <FlatList
-      style={[styles.root, { backgroundColor: colors.background }]}
-      data={userPosts}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => <FeedCard post={item} />}
-      ListHeaderComponent={ListHeader}
-      contentContainerStyle={{ paddingBottom: bottomPad }}
-      showsVerticalScrollIndicator={false}
-      ListEmptyComponent={
-        !isLoading ? (
-          <View style={styles.empty}>
-            <Feather name="edit-3" size={40} color={colors.mutedForeground} />
-            <Text style={[styles.emptyHint, { color: colors.mutedForeground }]}>
-              {profile ? `${profile.name} hasn't posted anything yet` : ''}
-            </Text>
-          </View>
-        ) : null
-      }
-    />
+    <>
+      <FlatList
+        style={[styles.root, { backgroundColor: colors.background }]}
+        data={userPosts}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => <FeedCard post={item} />}
+        ListHeaderComponent={ListHeader}
+        contentContainerStyle={{ paddingBottom: bottomPad }}
+        showsVerticalScrollIndicator={false}
+        ListEmptyComponent={
+          !isLoading ? (
+            <View style={styles.empty}>
+              <Feather name="edit-3" size={40} color={colors.mutedForeground} />
+              <Text style={[styles.emptyHint, { color: colors.mutedForeground }]}>
+                {profile ? `${profile.name} hasn't posted anything yet` : ''}
+              </Text>
+            </View>
+          ) : null
+        }
+      />
+      <ImageLightbox
+        visible={profileLightbox}
+        uris={profile?.profileImage ? [profile.profileImage] : []}
+        onClose={() => setProfileLightbox(false)}
+      />
+    </>
   );
 }
 

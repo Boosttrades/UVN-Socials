@@ -146,9 +146,28 @@ export default function CreateScreen() {
   /** Upload a single image URI and return its permanent Supabase public URL */
   async function uploadOneImage(uri: string): Promise<string> {
     const compressed = await compressImage(uri);
-    const fileResponse = await fetch(compressed.uri);
-    const blob = await fileResponse.blob();
-    const contentType = blob.type || 'image/jpeg';
+
+    // Build a Blob from the URI. Works for file://, blob://, and data: URIs.
+    let blob: Blob;
+    let contentType: string;
+    try {
+      const fileResponse = await fetch(compressed.uri);
+      if (!fileResponse.ok) throw new Error(`Fetch status ${fileResponse.status}`);
+      blob = await fileResponse.blob();
+      contentType = blob.type && blob.type !== 'application/octet-stream' ? blob.type : 'image/jpeg';
+    } catch {
+      // Fallback: decode data URI manually (expo-image-manipulator returns data URIs on web)
+      if (compressed.uri.startsWith('data:')) {
+        const [header, base64] = compressed.uri.split(',');
+        contentType = header.match(/:(.*?);/)?.[1] ?? 'image/jpeg';
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        blob = new Blob([bytes], { type: contentType });
+      } else {
+        throw new Error('Could not read image. Please try a different photo.');
+      }
+    }
 
     const { uploadURL, publicUrl } = await apiRequest<{
       uploadURL: string;
@@ -157,7 +176,11 @@ export default function CreateScreen() {
     }>('/storage/uploads/request-url', {
       method: 'POST',
       token,
-      body: { name: `post-image-${Date.now()}-${Math.random().toString(36).slice(2)}`, size: blob.size, contentType },
+      body: {
+        name: `post-image-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        size: blob.size,
+        contentType,
+      },
     });
 
     const putResponse = await fetch(uploadURL, {
@@ -165,7 +188,10 @@ export default function CreateScreen() {
       headers: { 'Content-Type': contentType },
       body: blob,
     });
-    if (!putResponse.ok) throw new Error('Upload failed');
+    if (!putResponse.ok) {
+      const detail = await putResponse.text().catch(() => '');
+      throw new Error(`Photo upload failed (${putResponse.status})${detail ? ': ' + detail : ''}. Check your internet connection and try again.`);
+    }
     return publicUrl;
   }
 
@@ -185,7 +211,7 @@ export default function CreateScreen() {
   }
 
   async function handlePublish() {
-    if (!title.trim() || !selectedType) return;
+    if (!selectedType) return;
     setErrorMessage(null);
 
     try {
@@ -217,7 +243,7 @@ export default function CreateScreen() {
     }
   }
 
-  const canPublish = title.trim().length > 0 && !createPost.isPending && !isUploadingImage;
+  const canPublish = !createPost.isPending && !isUploadingImage;
 
   return (
     <KeyboardAvoidingView
@@ -288,7 +314,7 @@ export default function CreateScreen() {
 
               {/* Headline */}
               <View style={styles.field}>
-                <Text style={[styles.label, { color: colors.foreground }]}>Headline *</Text>
+                <Text style={[styles.label, { color: colors.foreground }]}>Headline</Text>
                 <TextInput
                   value={title}
                   onChangeText={setTitle}

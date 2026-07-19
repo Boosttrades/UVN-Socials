@@ -1,4 +1,5 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
+import ImageLightbox from '@/components/ImageLightbox';
 import {
   FlatList,
   Keyboard,
@@ -55,6 +56,7 @@ export default function PostDetailScreen() {
   const [replyText, setReplyText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [likedCommentIds, setLikedCommentIds] = useState<Set<string>>(new Set());
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const replyInputRef = useRef<TextInput>(null);
 
   const { data: comments = [], isLoading: commentsLoading } = useComments(id);
@@ -217,33 +219,43 @@ export default function PostDetailScreen() {
           </Text>
         ) : null}
 
-        {/* Images (up to 3) */}
+        {/* Images (up to 3) — tap to view full screen */}
         {safePost.imageSources && safePost.imageSources.length > 0 ? (
           safePost.imageSources.length === 1 ? (
-            <Image
-              source={safePost.imageSources[0]}
-              style={styles.image}
-              contentFit="contain"
-              transition={150}
-              cachePolicy="memory-disk"
-              recyclingKey={`${safePost.id}-0`}
-            />
+            <Pressable onPress={() => setLightboxIndex(0)}>
+              <Image
+                source={safePost.imageSources[0]}
+                style={styles.image}
+                contentFit="contain"
+                transition={150}
+                cachePolicy="memory-disk"
+                recyclingKey={`${safePost.id}-0`}
+              />
+            </Pressable>
           ) : (
             <View style={styles.multiImageRow}>
               {safePost.imageSources.map((src, i) => (
-                <Image
-                  key={i}
-                  source={src}
-                  style={[styles.multiImage, safePost.imageSources!.length === 2 ? styles.multiImage2 : styles.multiImage3]}
-                  contentFit="cover"
-                  transition={150}
-                  cachePolicy="memory-disk"
-                  recyclingKey={`${safePost.id}-${i}`}
-                />
+                <Pressable key={i} style={safePost.imageSources!.length === 2 ? styles.multiImage2 : styles.multiImage3} onPress={() => setLightboxIndex(i)}>
+                  <Image
+                    source={src}
+                    style={[styles.multiImage, { width: '100%', height: '100%' }]}
+                    contentFit="cover"
+                    transition={150}
+                    cachePolicy="memory-disk"
+                    recyclingKey={`${safePost.id}-${i}`}
+                  />
+                </Pressable>
               ))}
             </View>
           )
         ) : null}
+
+        <ImageLightbox
+          visible={lightboxIndex !== null}
+          uris={(safePost.imageSources ?? []).map((s) => (typeof s === 'string' ? s : s?.uri ?? ''))}
+          initialIndex={lightboxIndex ?? 0}
+          onClose={() => setLightboxIndex(null)}
+        />
 
         {/* Job / Event details */}
         {safePost.jobDetails ? (

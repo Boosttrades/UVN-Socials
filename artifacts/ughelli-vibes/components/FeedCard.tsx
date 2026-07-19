@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import ImageLightbox from '@/components/ImageLightbox';
 import {
   Platform,
   Pressable,
@@ -43,6 +44,7 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
   const likePost = useLikePost();
   const bookmarkPost = useBookmarkPost();
   const sharePost = useSharePost();
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const liked = post.isLiked;
   const bookmarked = post.isBookmarked;
@@ -191,36 +193,46 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
         </Text>
       ) : null}
 
-      {/* Images — up to 3; single image fills width, multiple shown as a
-          horizontal scroll strip so none get cropped. */}
+      {/* Images — tap any image to open full-screen lightbox */}
       {post.imageSources && post.imageSources.length > 0 ? (
         post.imageSources.length === 1 ? (
-          <Image
-            source={post.imageSources[0]}
-            style={styles.image}
-            contentFit="contain"
-            transition={150}
-            cachePolicy={IMAGE_CACHE_POLICY}
-            placeholder={{ blurhash: BLURHASH_PLACEHOLDER }}
-            recyclingKey={`${post.id}-0`}
-          />
+          <Pressable onPress={(e) => { e.stopPropagation?.(); setLightboxIndex(0); }}>
+            <Image
+              source={post.imageSources[0]}
+              style={styles.image}
+              contentFit="contain"
+              transition={150}
+              cachePolicy={IMAGE_CACHE_POLICY}
+              placeholder={{ blurhash: BLURHASH_PLACEHOLDER }}
+              recyclingKey={`${post.id}-0`}
+            />
+          </Pressable>
         ) : (
           <View style={styles.multiImageRow}>
             {post.imageSources.map((src, i) => (
-              <Image
-                key={i}
-                source={src}
-                style={[styles.multiImage, post.imageSources!.length === 2 ? styles.multiImage2 : styles.multiImage3]}
-                contentFit="cover"
-                transition={150}
-                cachePolicy={IMAGE_CACHE_POLICY}
-                placeholder={{ blurhash: BLURHASH_PLACEHOLDER }}
-                recyclingKey={`${post.id}-${i}`}
-              />
+              <Pressable key={i} style={post.imageSources!.length === 2 ? styles.multiImage2 : styles.multiImage3} onPress={(e) => { e.stopPropagation?.(); setLightboxIndex(i); }}>
+                <Image
+                  source={src}
+                  style={[styles.multiImage, { width: '100%', height: '100%' }]}
+                  contentFit="cover"
+                  transition={150}
+                  cachePolicy={IMAGE_CACHE_POLICY}
+                  placeholder={{ blurhash: BLURHASH_PLACEHOLDER }}
+                  recyclingKey={`${post.id}-${i}`}
+                />
+              </Pressable>
             ))}
           </View>
         )
       ) : null}
+
+      {/* Full-screen image viewer */}
+      <ImageLightbox
+        visible={lightboxIndex !== null}
+        uris={(post.imageSources ?? []).map((s) => (typeof s === 'string' ? s : s?.uri ?? ''))}
+        initialIndex={lightboxIndex ?? 0}
+        onClose={() => setLightboxIndex(null)}
+      />
 
       {/* Job details */}
       {post.jobDetails ? (

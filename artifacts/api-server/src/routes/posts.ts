@@ -169,7 +169,7 @@ router.post("/", requireAuth, async (req, res) => {
     .from("Post")
     .insert({
       user_id: currentUser.id,
-      headline: parsed.data.headline,
+      headline: parsed.data.headline ?? '',
       text: parsed.data.body ?? null,
       image_url: storedImageUrl,
       type: parsed.data.type,

@@ -46,7 +46,7 @@ export const postsRelations = relations(postsTable, ({ one }) => ({
 export const createPostSchema = z.object({
   type: z.enum(POST_TYPES),
   category: z.enum(POST_CATEGORIES).optional(),
-  headline: z.string().trim().min(1, "Headline is required").max(200),
+  headline: z.string().trim().max(200).default(''),
   body: z.string().trim().max(1000).optional(),
   // Legacy single-image field kept for compat; prefer imageUrls for new posts
   imageUrl: z.string().trim().min(1).max(2000).optional(),
