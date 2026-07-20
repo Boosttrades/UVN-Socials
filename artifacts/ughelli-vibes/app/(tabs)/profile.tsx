@@ -90,11 +90,10 @@ export default function ProfileScreen() {
     try {
       // Compress to 400×400 — profile photos are displayed small; no need for more
       const { ImageManipulator, SaveFormat } = await import('expo-image-manipulator');
-      const compressed = await ImageManipulator.manipulateAsync(
-        result.assets[0].uri,
-        [{ resize: { width: 400, height: 400 } }],
-        { compress: 0.85, format: SaveFormat.JPEG }
-      );
+      const ctx = ImageManipulator.manipulate(result.assets[0].uri);
+      ctx.resize({ width: 400, height: 400 });
+      const rendered = await ctx.renderAsync();
+      const compressed = await rendered.saveAsync({ compress: 0.85, format: SaveFormat.JPEG });
 
       const contentType = 'image/jpeg';
       const { uploadURL, publicUrl } = await apiRequest<{
