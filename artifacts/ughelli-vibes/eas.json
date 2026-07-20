@@ -9,8 +9,7 @@
       "developmentClient": true,
       "distribution": "internal",
       "android": {
-        "buildType": "apk",
-        "gradleCommand": ":app:assembleDebug"
+        "buildType": "apk"
       }
     },
     "preview": {
@@ -18,15 +17,25 @@
       "android": {
         "buildType": "apk"
       },
-      "env": {}
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://REPLACE_WITH_YOUR_DEPLOYED_API_URL/api"
+      }
     },
     "production": {
       "android": {
-        "buildType": "apk"
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://REPLACE_WITH_YOUR_DEPLOYED_API_URL/api"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./google-service-account.json",
+        "track": "internal"
+      }
+    }
   }
 }

@@ -1,13 +1,15 @@
 /**
  * Constructs the API base URL.
- * - In Replit: uses EXPO_PUBLIC_DOMAIN (the proxied dev domain)
- * - Fallback: localhost:8080 for local development outside Replit
+ * Priority order:
+ * 1. EXPO_PUBLIC_API_URL — baked in at EAS Build time for preview/production APKs
+ * 2. EXPO_PUBLIC_DOMAIN  — injected by the Replit workflow for local dev (Expo Go)
+ * 3. localhost:8080      — fallback for running outside Replit
  */
 export function getApiBase(): string {
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (apiUrl) return apiUrl;
   const domain = process.env.EXPO_PUBLIC_DOMAIN;
-  if (domain) {
-    return `https://${domain}/api`;
-  }
+  if (domain) return `https://${domain}/api`;
   return 'http://localhost:8080/api';
 }
 
