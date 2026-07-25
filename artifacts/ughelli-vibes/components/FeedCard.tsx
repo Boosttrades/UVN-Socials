@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
   card: {
     marginHorizontal: 12,
     marginVertical: 5,
-    borderRadius: 14,
+    borderRadius: 24,
     padding: 14,
     ...Platform.select({
       ios: {
@@ -351,7 +351,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 20,
+    borderRadius: 28,
     gap: 5,
   },
   dot: {
@@ -367,7 +367,7 @@ const styles = StyleSheet.create({
   sponsoredBadge: {
     paddingHorizontal: 7,
     paddingVertical: 3,
-    borderRadius: 20,
+    borderRadius: 24,
   },
   sponsoredText: {
     fontSize: 10,
@@ -428,7 +428,7 @@ const styles = StyleSheet.create({
   },
   image: {
     width: '100%',
-    borderRadius: 10,
+    borderRadius: 16,
     marginVertical: 10,
     aspectRatio: 4 / 3,
   },
@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 4,
     marginVertical: 10,
-    borderRadius: 10,
+    borderRadius: 16,
     overflow: 'hidden',
   },
   multiImage: {
@@ -450,7 +450,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   detailsCard: {
-    borderRadius: 10,
+    borderRadius: 16,
     padding: 10,
     marginBottom: 10,
     gap: 6,
@@ -476,6 +476,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 4,
     paddingHorizontal: 10,
+    borderRadius: 12,
     gap: 5,
   },
   reactionCount: {
