@@ -20,9 +20,6 @@ import { CATEGORY_COLORS, type FeedPost } from '@/constants/mockData';
 import { commentsQueryKey, useBookmarkPost, useLikePost, useSharePost } from '@/hooks/usePosts';
 import { apiRequest } from '@/utils/api';
 
-// expo-image caches decoded images on disk, so scrolling back to a post
-// already shown doesn't re-download the image (item 5/17 of the perf pass:
-// "cache images").
 const IMAGE_CACHE_POLICY = 'memory-disk' as const;
 const BLURHASH_PLACEHOLDER = 'L6PZfSi_.AyE_3t7t7R**0o#DgR4';
 
@@ -54,19 +51,13 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
   const isEmergency = post.isEmergency;
 
   function handleLike() {
-    if (!token) {
-      router.push('/auth/login' as any);
-      return;
-    }
+    if (!token) { router.push('/auth/login' as any); return; }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     likePost.mutate(post.id);
   }
 
   function handleBookmark() {
-    if (!token) {
-      router.push('/auth/login' as any);
-      return;
-    }
+    if (!token) { router.push('/auth/login' as any); return; }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     bookmarkPost.mutate(post.id);
   }
@@ -80,10 +71,6 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
     router.push(`/post/${post.id}` as any);
   }
 
-  // Quietly warm the post-detail screen's data while the tap gesture is
-  // still resolving, so by the time navigation lands the comments are
-  // already in cache and the screen opens without its own loading spinner
-  // (item 15/17: "preload the next screen").
   function handlePressIn() {
     queryClient.prefetchQuery({
       queryKey: commentsQueryKey(post.id),
@@ -101,8 +88,11 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
     } catch {}
   }
 
-  const cardBg = isEmergency ? '#FEF2F2' : colors.card;
-  const cardBorderColor = isEmergency ? '#DC2626' : colors.border;
+  const isDark = colors.background === '#0A0F0D';
+  const cardBg = isEmergency
+    ? (isDark ? '#26120F' : '#FEF2F2')
+    : (isDark ? colors.card : '#FFFFFF');
+  const cardBorderColor = isEmergency ? '#DC2626' : (isDark ? colors.border : '#EAECF0');
 
   return (
     <TouchableOpacity
@@ -114,9 +104,8 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
         {
           backgroundColor: cardBg,
           borderColor: cardBorderColor,
-          borderLeftWidth: isEmergency ? 4 : 1,
-          borderLeftColor: isEmergency ? '#DC2626' : cardBorderColor,
-          borderWidth: 1,
+          borderLeftWidth: isEmergency ? 4 : 0,
+          borderLeftColor: isEmergency ? '#DC2626' : 'transparent',
         },
       ]}
     >
@@ -124,7 +113,7 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
       <View style={styles.topRow}>
         <View style={[styles.categoryBadge, { backgroundColor: catColors.bg }]}>
           {isEmergency && (
-            <Feather name="alert-circle" size={11} color={catColors.dot} />
+            <Feather name="alert-circle" size={10} color={catColors.dot} />
           )}
           {post.isBreaking && !isEmergency && (
             <View style={[styles.dot, { backgroundColor: catColors.dot }]} />
@@ -138,7 +127,7 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
           </Text>
         </View>
         {post.isSponsored && (
-          <View style={[styles.sponsoredBadge, { backgroundColor: colors.muted }]}>
+          <View style={[styles.sponsoredBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6', borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB' }]}>
             <Text style={[styles.sponsoredText, { color: colors.mutedForeground }]}>Sponsored</Text>
           </View>
         )}
@@ -146,7 +135,10 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
 
       {/* Author row */}
       <View style={styles.authorRow}>
-        <Pressable onPress={() => router.push(`/user/${post.author.handle}` as any)} style={[styles.avatar, { backgroundColor: post.author.avatarColor }]}>
+        <Pressable
+          onPress={() => router.push(`/user/${post.author.handle}` as any)}
+          style={[styles.avatar, { backgroundColor: post.author.avatarColor }]}
+        >
           {post.author.profileImage ? (
             <Image
               source={{ uri: post.author.profileImage }}
@@ -165,7 +157,9 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
               {post.author.name}
             </Text>
             {post.author.verified && (
-              <Feather name="check-circle" size={12} color={colors.primary} style={{ marginLeft: 4 }} />
+              <View style={[styles.verifiedBadge, { backgroundColor: colors.primary }]}>
+                <Feather name="check" size={9} color="#FFFFFF" />
+              </View>
             )}
           </View>
           <Text style={[styles.timeAgo, { color: colors.mutedForeground }]}>{post.timeAgo}</Text>
@@ -176,7 +170,7 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
       <Text
         style={[
           styles.headline,
-          { color: isEmergency ? '#7F1D1D' : colors.foreground },
+          { color: isEmergency ? (isDark ? '#FCA5A5' : '#7F1D1D') : colors.foreground },
         ]}
         numberOfLines={3}
       >
@@ -186,14 +180,14 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
       {/* Body */}
       {post.body ? (
         <Text
-          style={[styles.body, { color: isEmergency ? '#991B1B' : colors.mutedForeground }]}
+          style={[styles.body, { color: isEmergency ? (isDark ? '#F87171' : '#991B1B') : colors.mutedForeground }]}
           numberOfLines={2}
         >
           {post.body}
         </Text>
       ) : null}
 
-      {/* Images — tap any image to open full-screen lightbox */}
+      {/* Images */}
       {post.imageSources && post.imageSources.length > 0 ? (
         post.imageSources.length === 1 ? (
           <Pressable onPress={(e) => { e.stopPropagation?.(); setLightboxIndex(0); }}>
@@ -210,7 +204,11 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
         ) : (
           <View style={styles.multiImageRow}>
             {post.imageSources.map((src, i) => (
-              <Pressable key={i} style={post.imageSources!.length === 2 ? styles.multiImage2 : styles.multiImage3} onPress={(e) => { e.stopPropagation?.(); setLightboxIndex(i); }}>
+              <Pressable
+                key={i}
+                style={post.imageSources!.length === 2 ? styles.multiImage2 : styles.multiImage3}
+                onPress={(e) => { e.stopPropagation?.(); setLightboxIndex(i); }}
+              >
                 <Image
                   source={src}
                   style={[styles.multiImage, { width: '100%', height: '100%' }]}
@@ -226,7 +224,6 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
         )
       ) : null}
 
-      {/* Full-screen image viewer */}
       <ImageLightbox
         visible={lightboxIndex !== null}
         uris={(post.imageSources ?? []).map((s) => (typeof s === 'string' ? s : s?.uri ?? ''))}
@@ -236,18 +233,14 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
 
       {/* Job details */}
       {post.jobDetails ? (
-        <View style={[styles.detailsCard, { backgroundColor: colors.muted }]}>
+        <View style={[styles.detailsCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAF9', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E8F0EC' }]}>
           <View style={styles.detailItem}>
             <Feather name="briefcase" size={12} color={colors.mutedForeground} />
-            <Text style={[styles.detailText, { color: colors.mutedForeground }]}>
-              {post.jobDetails.company}
-            </Text>
+            <Text style={[styles.detailText, { color: colors.mutedForeground }]}>{post.jobDetails.company}</Text>
           </View>
           <View style={styles.detailItem}>
             <Feather name="map-pin" size={12} color={colors.mutedForeground} />
-            <Text style={[styles.detailText, { color: colors.mutedForeground }]}>
-              {post.jobDetails.location}
-            </Text>
+            <Text style={[styles.detailText, { color: colors.mutedForeground }]}>{post.jobDetails.location}</Text>
           </View>
           {post.jobDetails.salary ? (
             <View style={styles.detailItem}>
@@ -262,18 +255,14 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
 
       {/* Event details */}
       {post.eventDetails ? (
-        <View style={[styles.detailsCard, { backgroundColor: colors.muted }]}>
+        <View style={[styles.detailsCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAF9', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E8F0EC' }]}>
           <View style={styles.detailItem}>
             <Feather name="calendar" size={12} color={colors.mutedForeground} />
-            <Text style={[styles.detailText, { color: colors.mutedForeground }]}>
-              {post.eventDetails.date}
-            </Text>
+            <Text style={[styles.detailText, { color: colors.mutedForeground }]}>{post.eventDetails.date}</Text>
           </View>
           <View style={styles.detailItem}>
             <Feather name="map-pin" size={12} color={colors.mutedForeground} />
-            <Text style={[styles.detailText, { color: colors.mutedForeground }]}>
-              {post.eventDetails.venue}
-            </Text>
+            <Text style={[styles.detailText, { color: colors.mutedForeground }]}>{post.eventDetails.venue}</Text>
           </View>
         </View>
       ) : null}
@@ -282,10 +271,13 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
       <View
         style={[
           styles.reactionRow,
-          { borderTopColor: isEmergency ? '#FECACA' : colors.border },
+          { borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : '#F0F2F4' },
         ]}
       >
-        <Pressable style={styles.reactionBtn} onPress={handleLike}>
+        <Pressable
+          style={[styles.reactionBtn, liked && { backgroundColor: isDark ? 'rgba(34,197,139,0.1)' : '#E8F5F0' }]}
+          onPress={handleLike}
+        >
           <Ionicons
             name={liked ? 'thumbs-up' : 'thumbs-up-outline'}
             size={15}
@@ -312,7 +304,10 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
 
         <View style={{ flex: 1 }} />
 
-        <Pressable style={styles.reactionBtn} onPress={handleBookmark}>
+        <Pressable
+          style={[styles.reactionBtn, bookmarked && { backgroundColor: isDark ? 'rgba(34,197,139,0.1)' : '#E8F5F0' }]}
+          onPress={handleBookmark}
+        >
           <Ionicons
             name={bookmarked ? 'bookmark' : 'bookmark-outline'}
             size={15}
@@ -326,18 +321,19 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    marginHorizontal: 12,
-    marginVertical: 5,
-    borderRadius: 24,
-    padding: 14,
+    marginHorizontal: 14,
+    marginVertical: 6,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.06,
-        shadowRadius: 4,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
       },
-      android: { elevation: 1 },
+      android: { elevation: 3 },
     }),
   },
   topRow: {
@@ -349,25 +345,26 @@ const styles = StyleSheet.create({
   categoryBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 9,
     paddingVertical: 4,
-    borderRadius: 28,
+    borderRadius: 20,
     gap: 5,
   },
   dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
   },
   categoryText: {
     fontSize: 10,
     fontFamily: 'Inter_700Bold',
-    letterSpacing: 0.4,
+    letterSpacing: 0.5,
   },
   sponsoredBadge: {
-    paddingHorizontal: 7,
+    paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 24,
+    borderRadius: 20,
+    borderWidth: 1,
   },
   sponsoredText: {
     fontSize: 10,
@@ -377,37 +374,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 10,
-    gap: 8,
+    gap: 9,
   },
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
   avatarImg: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
   },
   avatarText: {
     color: '#FFFFFF',
     fontSize: 11,
     fontFamily: 'Inter_700Bold',
   },
-  authorMeta: {
-    flex: 1,
-  },
+  authorMeta: { flex: 1 },
   authorNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 5,
   },
   authorName: {
     fontSize: 13,
     fontFamily: 'Inter_600SemiBold',
     maxWidth: '80%',
+  },
+  verifiedBadge: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   timeAgo: {
     fontSize: 11,
@@ -418,7 +421,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontFamily: 'Inter_700Bold',
     lineHeight: 22,
-    marginBottom: 6,
+    marginBottom: 5,
   },
   body: {
     fontSize: 13,
@@ -428,29 +431,26 @@ const styles = StyleSheet.create({
   },
   image: {
     width: '100%',
-    borderRadius: 16,
+    borderRadius: 14,
     marginVertical: 10,
     aspectRatio: 4 / 3,
   },
   multiImageRow: {
     flexDirection: 'row',
-    gap: 4,
+    gap: 3,
     marginVertical: 10,
-    borderRadius: 16,
+    borderRadius: 14,
     overflow: 'hidden',
   },
   multiImage: {
     borderRadius: 0,
     aspectRatio: 1,
   },
-  multiImage2: {
-    flex: 1,
-  },
-  multiImage3: {
-    flex: 1,
-  },
+  multiImage2: { flex: 1 },
+  multiImage3: { flex: 1 },
   detailsCard: {
-    borderRadius: 16,
+    borderRadius: 12,
+    borderWidth: 1,
     padding: 10,
     marginBottom: 10,
     gap: 6,
@@ -467,16 +467,16 @@ const styles = StyleSheet.create({
   reactionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 12,
     paddingTop: 10,
     borderTopWidth: 1,
   },
   reactionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 12,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 10,
     gap: 5,
   },
   reactionCount: {
