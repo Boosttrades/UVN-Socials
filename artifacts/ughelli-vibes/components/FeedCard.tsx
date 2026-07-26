@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useColorScheme,
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -35,6 +36,8 @@ function formatCount(n: number): string {
 
 export default function FeedCard({ post, onPress }: FeedCardProps) {
   const colors = useColors();
+  const scheme = useColorScheme();
+  const isDark = scheme === 'dark';
   const router = useRouter();
   const { token } = useAuth();
   const queryClient = useQueryClient();
@@ -46,7 +49,6 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
   const liked = post.isLiked;
   const bookmarked = post.isBookmarked;
   const likeCount = post.likes;
-
   const catColors = CATEGORY_COLORS[post.category];
   const isEmergency = post.isEmergency;
 
@@ -81,40 +83,44 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
   async function handleShare() {
     sharePost.mutate(post.id);
     try {
-      await Share.share({
-        message: `${post.headline}\n\nShared via Ughelli Vibes TV`,
-        title: post.headline,
-      });
+      await Share.share({ message: `${post.headline}\n\nShared via Ughelli Vibes TV`, title: post.headline });
     } catch {}
   }
 
-  const isDark = colors.background === '#0A0F0D';
+  // ── Glass card colours ───────────────────────────────────────────────────────
+  // AppBackground is always a dark forest green, so cards always use dark glass.
   const cardBg = isEmergency
-    ? (isDark ? '#26120F' : '#FEF2F2')
-    : (isDark ? colors.card : '#FFFFFF');
-  const cardBorderColor = isEmergency ? '#DC2626' : (isDark ? colors.border : '#EAECF0');
+    ? 'rgba(40,10,8,0.80)'
+    : 'rgba(8,30,18,0.78)';
+
+  // Border echoes the network node glow colour
+  const cardBorder = isEmergency
+    ? 'rgba(248,113,113,0.42)'
+    : 'rgba(34,197,139,0.24)';
+
+  const divider = 'rgba(34,197,139,0.12)';
+  const foreground = '#EDF2F0';
+  const mutedFg = 'rgba(255,255,255,0.50)';
 
   return (
     <TouchableOpacity
-      activeOpacity={0.97}
+      activeOpacity={0.95}
       onPress={handleCardPress}
       onPressIn={handlePressIn}
       style={[
         styles.card,
         {
           backgroundColor: cardBg,
-          borderColor: cardBorderColor,
-          borderLeftWidth: isEmergency ? 4 : 0,
-          borderLeftColor: isEmergency ? '#DC2626' : 'transparent',
+          borderColor: cardBorder,
+          borderLeftWidth: isEmergency ? 4 : 1,
+          borderLeftColor: isEmergency ? (isDark ? '#F87171' : '#DC2626') : cardBorder,
         },
       ]}
     >
-      {/* Top row: category badge + sponsored tag */}
+      {/* Top row: category badge */}
       <View style={styles.topRow}>
         <View style={[styles.categoryBadge, { backgroundColor: catColors.bg }]}>
-          {isEmergency && (
-            <Feather name="alert-circle" size={10} color={catColors.dot} />
-          )}
+          {isEmergency && <Feather name="alert-circle" size={10} color={catColors.dot} />}
           {post.isBreaking && !isEmergency && (
             <View style={[styles.dot, { backgroundColor: catColors.dot }]} />
           )}
@@ -127,13 +133,16 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
           </Text>
         </View>
         {post.isSponsored && (
-          <View style={[styles.sponsoredBadge, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6', borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E5E7EB' }]}>
-            <Text style={[styles.sponsoredText, { color: colors.mutedForeground }]}>Sponsored</Text>
+          <View style={[styles.sponsoredBadge, {
+            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+            borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+          }]}>
+            <Text style={[styles.sponsoredText, { color: mutedFg }]}>Sponsored</Text>
           </View>
         )}
       </View>
 
-      {/* Author row */}
+      {/* Author */}
       <View style={styles.authorRow}>
         <Pressable
           onPress={() => router.push(`/user/${post.author.handle}` as any)}
@@ -153,7 +162,7 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
         </Pressable>
         <View style={styles.authorMeta}>
           <View style={styles.authorNameRow}>
-            <Text style={[styles.authorName, { color: colors.foreground }]} numberOfLines={1}>
+            <Text style={[styles.authorName, { color: foreground }]} numberOfLines={1}>
               {post.author.name}
             </Text>
             {post.author.verified && (
@@ -162,16 +171,13 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
               </View>
             )}
           </View>
-          <Text style={[styles.timeAgo, { color: colors.mutedForeground }]}>{post.timeAgo}</Text>
+          <Text style={[styles.timeAgo, { color: mutedFg }]}>{post.timeAgo}</Text>
         </View>
       </View>
 
       {/* Headline */}
       <Text
-        style={[
-          styles.headline,
-          { color: isEmergency ? (isDark ? '#FCA5A5' : '#7F1D1D') : colors.foreground },
-        ]}
+        style={[styles.headline, { color: isEmergency ? (isDark ? '#FCA5A5' : '#7F1D1D') : foreground }]}
         numberOfLines={3}
       >
         {post.headline}
@@ -180,7 +186,7 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
       {/* Body */}
       {post.body ? (
         <Text
-          style={[styles.body, { color: isEmergency ? (isDark ? '#F87171' : '#991B1B') : colors.mutedForeground }]}
+          style={[styles.body, { color: isEmergency ? (isDark ? '#F87171' : '#991B1B') : mutedFg }]}
           numberOfLines={2}
         >
           {post.body}
@@ -233,14 +239,17 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
 
       {/* Job details */}
       {post.jobDetails ? (
-        <View style={[styles.detailsCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAF9', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E8F0EC' }]}>
+        <View style={[styles.detailsCard, {
+          backgroundColor: isDark ? 'rgba(34,197,139,0.06)' : 'rgba(15,138,95,0.05)',
+          borderColor: isDark ? 'rgba(34,197,139,0.15)' : 'rgba(15,138,95,0.12)',
+        }]}>
           <View style={styles.detailItem}>
-            <Feather name="briefcase" size={12} color={colors.mutedForeground} />
-            <Text style={[styles.detailText, { color: colors.mutedForeground }]}>{post.jobDetails.company}</Text>
+            <Feather name="briefcase" size={12} color={mutedFg} />
+            <Text style={[styles.detailText, { color: mutedFg }]}>{post.jobDetails.company}</Text>
           </View>
           <View style={styles.detailItem}>
-            <Feather name="map-pin" size={12} color={colors.mutedForeground} />
-            <Text style={[styles.detailText, { color: colors.mutedForeground }]}>{post.jobDetails.location}</Text>
+            <Feather name="map-pin" size={12} color={mutedFg} />
+            <Text style={[styles.detailText, { color: mutedFg }]}>{post.jobDetails.location}</Text>
           </View>
           {post.jobDetails.salary ? (
             <View style={styles.detailItem}>
@@ -255,63 +264,61 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
 
       {/* Event details */}
       {post.eventDetails ? (
-        <View style={[styles.detailsCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAF9', borderColor: isDark ? 'rgba(255,255,255,0.06)' : '#E8F0EC' }]}>
+        <View style={[styles.detailsCard, {
+          backgroundColor: isDark ? 'rgba(34,197,139,0.06)' : 'rgba(15,138,95,0.05)',
+          borderColor: isDark ? 'rgba(34,197,139,0.15)' : 'rgba(15,138,95,0.12)',
+        }]}>
           <View style={styles.detailItem}>
-            <Feather name="calendar" size={12} color={colors.mutedForeground} />
-            <Text style={[styles.detailText, { color: colors.mutedForeground }]}>{post.eventDetails.date}</Text>
+            <Feather name="calendar" size={12} color={mutedFg} />
+            <Text style={[styles.detailText, { color: mutedFg }]}>{post.eventDetails.date}</Text>
           </View>
           <View style={styles.detailItem}>
-            <Feather name="map-pin" size={12} color={colors.mutedForeground} />
-            <Text style={[styles.detailText, { color: colors.mutedForeground }]}>{post.eventDetails.venue}</Text>
+            <Feather name="map-pin" size={12} color={mutedFg} />
+            <Text style={[styles.detailText, { color: mutedFg }]}>{post.eventDetails.venue}</Text>
           </View>
         </View>
       ) : null}
 
       {/* Reaction row */}
-      <View
-        style={[
-          styles.reactionRow,
-          { borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : '#F0F2F4' },
-        ]}
-      >
+      <View style={[styles.reactionRow, { borderTopColor: divider }]}>
         <Pressable
-          style={[styles.reactionBtn, liked && { backgroundColor: isDark ? 'rgba(34,197,139,0.1)' : '#E8F5F0' }]}
+          style={[styles.reactionBtn, liked && {
+            backgroundColor: isDark ? 'rgba(34,197,139,0.14)' : 'rgba(15,138,95,0.08)',
+          }]}
           onPress={handleLike}
         >
           <Ionicons
             name={liked ? 'thumbs-up' : 'thumbs-up-outline'}
             size={15}
-            color={liked ? colors.primary : colors.mutedForeground}
+            color={liked ? colors.primary : mutedFg}
           />
-          <Text style={[styles.reactionCount, { color: liked ? colors.primary : colors.mutedForeground }]}>
+          <Text style={[styles.reactionCount, { color: liked ? colors.primary : mutedFg }]}>
             {formatCount(likeCount)}
           </Text>
         </Pressable>
 
-        <Pressable style={styles.reactionBtn} onPress={handleComment} accessibilityLabel="View comments" accessibilityRole="button">
-          <Ionicons name="chatbubble-outline" size={14} color={colors.mutedForeground} />
-          <Text style={[styles.reactionCount, { color: colors.mutedForeground }]}>
-            {formatCount(post.comments)}
-          </Text>
+        <Pressable style={styles.reactionBtn} onPress={handleComment}>
+          <Ionicons name="chatbubble-outline" size={14} color={mutedFg} />
+          <Text style={[styles.reactionCount, { color: mutedFg }]}>{formatCount(post.comments)}</Text>
         </Pressable>
 
-        <Pressable style={styles.reactionBtn} onPress={handleShare} accessibilityLabel="Share post" accessibilityRole="button">
-          <Feather name="share-2" size={14} color={colors.mutedForeground} />
-          <Text style={[styles.reactionCount, { color: colors.mutedForeground }]}>
-            {formatCount(post.shares)}
-          </Text>
+        <Pressable style={styles.reactionBtn} onPress={handleShare}>
+          <Feather name="share-2" size={14} color={mutedFg} />
+          <Text style={[styles.reactionCount, { color: mutedFg }]}>{formatCount(post.shares)}</Text>
         </Pressable>
 
         <View style={{ flex: 1 }} />
 
         <Pressable
-          style={[styles.reactionBtn, bookmarked && { backgroundColor: isDark ? 'rgba(34,197,139,0.1)' : '#E8F5F0' }]}
+          style={[styles.reactionBtn, bookmarked && {
+            backgroundColor: isDark ? 'rgba(34,197,139,0.14)' : 'rgba(15,138,95,0.08)',
+          }]}
           onPress={handleBookmark}
         >
           <Ionicons
             name={bookmarked ? 'bookmark' : 'bookmark-outline'}
             size={15}
-            color={bookmarked ? colors.primary : colors.mutedForeground}
+            color={bookmarked ? colors.primary : mutedFg}
           />
         </Pressable>
       </View>
@@ -326,161 +333,47 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 16,
     borderWidth: 1,
+    // Elevation/shadow gives depth over the network layer below
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.08,
-        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.18,
+        shadowRadius: 16,
       },
-      android: { elevation: 3 },
+      android: { elevation: 4 },
     }),
   },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
+  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   categoryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 20,
-    gap: 5,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 9, paddingVertical: 4,
+    borderRadius: 20, gap: 5,
   },
-  dot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-  },
-  categoryText: {
-    fontSize: 10,
-    fontFamily: 'Inter_700Bold',
-    letterSpacing: 0.5,
-  },
-  sponsoredBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  sponsoredText: {
-    fontSize: 10,
-    fontFamily: 'Inter_400Regular',
-  },
-  authorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-    gap: 9,
-  },
-  avatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  avatarImg: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-  },
-  avatarText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontFamily: 'Inter_700Bold',
-  },
+  dot: { width: 5, height: 5, borderRadius: 2.5 },
+  categoryText: { fontSize: 10, fontFamily: 'Inter_700Bold', letterSpacing: 0.5 },
+  sponsoredBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, borderWidth: 1 },
+  sponsoredText: { fontSize: 10, fontFamily: 'Inter_400Regular' },
+  authorRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 9 },
+  avatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  avatarImg: { width: 34, height: 34, borderRadius: 17 },
+  avatarText: { color: '#FFFFFF', fontSize: 11, fontFamily: 'Inter_700Bold' },
   authorMeta: { flex: 1 },
-  authorNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  authorName: {
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
-    maxWidth: '80%',
-  },
-  verifiedBadge: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  timeAgo: {
-    fontSize: 11,
-    fontFamily: 'Inter_400Regular',
-    marginTop: 1,
-  },
-  headline: {
-    fontSize: 15,
-    fontFamily: 'Inter_700Bold',
-    lineHeight: 22,
-    marginBottom: 5,
-  },
-  body: {
-    fontSize: 13,
-    fontFamily: 'Inter_400Regular',
-    lineHeight: 19,
-    marginBottom: 10,
-  },
-  image: {
-    width: '100%',
-    borderRadius: 14,
-    marginVertical: 10,
-    aspectRatio: 4 / 3,
-  },
-  multiImageRow: {
-    flexDirection: 'row',
-    gap: 3,
-    marginVertical: 10,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  multiImage: {
-    borderRadius: 0,
-    aspectRatio: 1,
-  },
+  authorNameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  authorName: { fontSize: 13, fontFamily: 'Inter_600SemiBold', maxWidth: '80%' },
+  verifiedBadge: { width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  timeAgo: { fontSize: 11, fontFamily: 'Inter_400Regular', marginTop: 1 },
+  headline: { fontSize: 15, fontFamily: 'Inter_700Bold', lineHeight: 22, marginBottom: 5 },
+  body: { fontSize: 13, fontFamily: 'Inter_400Regular', lineHeight: 19, marginBottom: 10 },
+  image: { width: '100%', borderRadius: 14, marginVertical: 10, aspectRatio: 4 / 3 },
+  multiImageRow: { flexDirection: 'row', gap: 3, marginVertical: 10, borderRadius: 14, overflow: 'hidden' },
+  multiImage: { borderRadius: 0, aspectRatio: 1 },
   multiImage2: { flex: 1 },
   multiImage3: { flex: 1 },
-  detailsCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 10,
-    marginBottom: 10,
-    gap: 6,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  detailText: {
-    fontSize: 12,
-    fontFamily: 'Inter_400Regular',
-  },
-  reactionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 12,
-    paddingTop: 10,
-    borderTopWidth: 1,
-  },
-  reactionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 5,
-    paddingHorizontal: 9,
-    borderRadius: 10,
-    gap: 5,
-  },
-  reactionCount: {
-    fontSize: 13,
-    fontFamily: 'Inter_500Medium',
-  },
+  detailsCard: { borderRadius: 12, borderWidth: 1, padding: 10, marginBottom: 10, gap: 6 },
+  detailItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  detailText: { fontSize: 12, fontFamily: 'Inter_400Regular' },
+  reactionRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, paddingTop: 10, borderTopWidth: 1 },
+  reactionBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 5, paddingHorizontal: 9, borderRadius: 10, gap: 5 },
+  reactionCount: { fontSize: 13, fontFamily: 'Inter_500Medium' },
 });

@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { Dimensions, StyleSheet, useColorScheme, View } from 'react-native';
 import { onlineManager, QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
@@ -19,6 +20,27 @@ import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { NotificationsProvider } from '@/contexts/NotificationsContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import NetworkBackground from '@/components/NetworkBackground';
+import { useTheme } from '@/contexts/ThemeContext';
+
+const { width: SW, height: SH } = Dimensions.get('window');
+
+/** Persistent full-screen network — just the animated SVG, no dark bg.
+ *  The dark base colour is set on GestureHandlerRootView below. */
+function AppBackground() {
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <NetworkBackground
+        color="#22C58B"
+        opacity={0.30}
+        nodeCount={34}
+        maxDistance={165}
+        width={SW}
+        height={SH}
+      />
+    </View>
+  );
+}
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -76,7 +98,16 @@ function RootLayoutNav() {
   return (
     <>
       <AuthGate />
-      <Stack screenOptions={{ headerShown: false }}>
+      {/*
+        contentStyle backgroundColor must be transparent on every screen so the
+        persistent AppBackground (network grid) shows through from behind.
+      */}
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: 'transparent' },
+        }}
+      >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="auth" options={{ headerShown: false }} />
         <Stack.Screen name="post/[id]" options={{ headerShown: false }} />

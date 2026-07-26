@@ -23,8 +23,6 @@ const { width: SW, height: SH } = Dimensions.get('window');
 
 const PRIMARY = '#0F8A5F';
 const PRIMARY_DARK = '#066A46';
-const BG_TOP = '#061A12';
-const BG_BOTTOM = '#0A2E1E';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -80,24 +78,10 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.root}>
-      {/* Deep green gradient background */}
-      <LinearGradient
-        colors={[BG_TOP, BG_BOTTOM]}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0.2, y: 0 }}
-        end={{ x: 0.8, y: 1 }}
-      />
-
-      {/* Animated 3D network */}
-      <NetworkBackground
-        color="#22C58B"
-        opacity={0.18}
-        nodeCount={28}
-        maxDistance={140}
-        width={SW}
-        height={SH}
-      />
-
+      {/* Dark base */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: '#061A12' }]} pointerEvents="none" />
+      {/* Animated network */}
+      <NetworkBackground color="#22C58B" opacity={0.28} nodeCount={28} maxDistance={140} width={SW} height={SH} />
       {/* Subtle radial glow behind the card */}
       <View style={styles.glowSpot} pointerEvents="none" />
 
@@ -261,7 +245,7 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: BG_TOP },
+  root: { flex: 1 },
   flex: { flex: 1 },
   glowSpot: {
     position: 'absolute',

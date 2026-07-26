@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Dimensions,
   FlatList,
   Platform,
   Pressable,
@@ -15,6 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useColorScheme } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import FeedCard from '@/components/FeedCard';
 import EmergencyBanner from '@/components/EmergencyBanner';
@@ -23,9 +23,6 @@ import { SkeletonFeedList } from '@/components/SkeletonFeedCard';
 import { ALL_CATEGORIES, type PostCategory } from '@/constants/mockData';
 import { useFeed } from '@/hooks/usePosts';
 import { useNotifications } from '@/contexts/NotificationsContext';
-import NetworkBackground from '@/components/NetworkBackground';
-
-const { width: SW } = Dimensions.get('window');
 
 type FilterOption = 'All' | PostCategory;
 const FILTER_TABS: FilterOption[] = ['All', ...ALL_CATEGORIES];
@@ -34,6 +31,8 @@ export default function ForYouScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const scheme = useColorScheme();
+  const isDark = scheme === 'dark';
   const { category: categoryParam } = useLocalSearchParams<{ category?: string }>();
   const { unreadCount } = useNotifications();
   const [activeFilter, setActiveFilter] = useState<FilterOption>('All');
@@ -72,37 +71,34 @@ export default function ForYouScreen() {
     }
   }, [hasNextPage, isFetchingNextPage, activeFilter, fetchNextPage]);
 
-  const isDark = colors.background === '#0A0F0D';
-  const headerBgColors = isDark
-    ? (['#061A12', '#0A0F0D'] as const)
-    : (['#f0faf6', colors.background] as const);
+  // Glass header — always dark-canvas palette since AppBackground is always dark green
+  const headerBg = 'rgba(6,26,18,0.72)';
+  const headerBorder = 'rgba(34,197,139,0.20)';
+  const chipActiveBg = '#22C58B';
+  const chipInactiveBg = 'rgba(255,255,255,0.08)';
+  const chipInactiveBorder = 'rgba(34,197,139,0.20)';
+  const iconBtnBg = 'rgba(255,255,255,0.09)';
+  const foreground = '#EDF2F0';
+  const mutedFg = 'rgba(255,255,255,0.50)';
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {/* Header with network background */}
-      <View style={styles.headerContainer}>
+    /* Root is transparent — global AppBackground from _layout.tsx shows through */
+    <View style={styles.root}>
+      {/* Glass header + filter strip */}
+      <View style={[styles.headerContainer, { backgroundColor: headerBg, borderBottomColor: headerBorder }]}>
+        {/* Subtle gradient fade for depth */}
         <LinearGradient
-          colors={headerBgColors}
+          colors={isDark
+            ? ['rgba(34,197,139,0.06)', 'transparent']
+            : ['rgba(15,138,95,0.04)', 'transparent']}
           style={StyleSheet.absoluteFill}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-        />
-        <NetworkBackground
-          color={colors.primary}
-          opacity={isDark ? 0.22 : 0.12}
-          nodeCount={18}
-          maxDistance={110}
-          width={SW}
-          height={160}
+          pointerEvents="none"
         />
 
-        {/* Custom header */}
-        <View
-          style={[
-            styles.header,
-            { paddingTop: topInset + 8 },
-          ]}
-        >
+        {/* Header row */}
+        <View style={[styles.header, { paddingTop: topInset + 8 }]}>
           <View style={styles.logoRow}>
             <LinearGradient
               colors={[colors.primary, colors.secondary ?? colors.primary]}
@@ -113,44 +109,41 @@ export default function ForYouScreen() {
               <Feather name="zap" size={15} color="#FFFFFF" />
             </LinearGradient>
             <View>
-              <Text style={[styles.logoText, { color: isDark ? '#fff' : colors.foreground }]}>
-                Ughelli{' '}
-                <Text style={{ color: colors.primary }}>Vibes</Text>
+              <Text style={[styles.logoText, { color: foreground }]}>
+                Ughelli <Text style={{ color: colors.primary }}>Vibes</Text>
               </Text>
-              <Text style={[styles.logoSubtext, { color: isDark ? 'rgba(255,255,255,0.45)' : colors.mutedForeground }]}>
-                Local News Network
-              </Text>
+              <Text style={[styles.logoSub, { color: mutedFg }]}>Local News Network</Text>
             </View>
           </View>
 
           <View style={styles.headerActions}>
-            <View style={{ position: 'relative' }}>
+            <View>
               <Pressable
-                style={[styles.iconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : colors.muted }]}
+                style={[styles.iconBtn, { backgroundColor: iconBtnBg }]}
                 hitSlop={6}
                 onPress={() => router.push('/(tabs)/activity' as any)}
                 accessibilityRole="button"
                 accessibilityLabel="Notifications"
               >
-                <Feather name="bell" size={20} color={isDark ? '#fff' : colors.foreground} />
+                <Feather name="bell" size={19} color={foreground} />
               </Pressable>
               {unreadCount > 0 && (
-                <View style={[styles.notifBadge, { backgroundColor: colors.emergency }]} />
+                <View style={[styles.notifDot, { backgroundColor: colors.emergency }]} />
               )}
             </View>
             <Pressable
-              style={[styles.iconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : colors.muted }]}
+              style={[styles.iconBtn, { backgroundColor: iconBtnBg }]}
               hitSlop={6}
               onPress={() => router.push('/(tabs)/discover' as any)}
               accessibilityRole="button"
               accessibilityLabel="Search"
             >
-              <Feather name="search" size={20} color={isDark ? '#fff' : colors.foreground} />
+              <Feather name="search" size={19} color={foreground} />
             </Pressable>
           </View>
         </View>
 
-        {/* Category filter chips — inside the gradient block */}
+        {/* Category filter chips */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -165,18 +158,16 @@ export default function ForYouScreen() {
                 onPress={() => setActiveFilter(tab)}
                 style={[
                   styles.chip,
-                  active
-                    ? { backgroundColor: colors.primary, borderColor: colors.primary }
-                    : {
-                        backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
-                        borderColor: isDark ? 'rgba(255,255,255,0.12)' : colors.border,
-                      },
+                  {
+                    backgroundColor: active ? chipActiveBg : chipInactiveBg,
+                    borderColor: active ? chipActiveBg : chipInactiveBorder,
+                  },
                 ]}
               >
                 <Text
                   style={[
                     styles.chipText,
-                    { color: active ? '#FFFFFF' : isDark ? 'rgba(255,255,255,0.65)' : colors.mutedForeground },
+                    { color: active ? '#FFFFFF' : mutedFg },
                   ]}
                 >
                   {tab}
@@ -222,11 +213,11 @@ export default function ForYouScreen() {
           }
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Feather name="inbox" size={40} color={colors.mutedForeground} />
-              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+              <Feather name="inbox" size={40} color={mutedFg} />
+              <Text style={[styles.emptyTitle, { color: foreground }]}>
                 {activeFilter === 'All' ? 'No updates yet' : `No ${activeFilter} posts yet`}
               </Text>
-              <Text style={[styles.emptyHint, { color: colors.mutedForeground }]}>
+              <Text style={[styles.emptyHint, { color: mutedFg }]}>
                 Be the first to post something to the community
               </Text>
             </View>
@@ -238,8 +229,9 @@ export default function ForYouScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1 }, // transparent — global network background shows through
   headerContainer: {
+    borderBottomWidth: 1,
     overflow: 'hidden',
   },
   header: {
@@ -249,11 +241,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 14,
   },
-  logoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
+  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   logoMark: {
     width: 36,
     height: 36,
@@ -261,22 +249,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoText: {
-    fontSize: 21,
-    fontFamily: 'Inter_700Bold',
-    lineHeight: 24,
-  },
-  logoSubtext: {
-    fontSize: 10,
-    fontFamily: 'Inter_400Regular',
-    letterSpacing: 0.4,
-    marginTop: 1,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
+  logoText: { fontSize: 21, fontFamily: 'Inter_700Bold', lineHeight: 24 },
+  logoSub: { fontSize: 10, fontFamily: 'Inter_400Regular', letterSpacing: 0.4, marginTop: 1 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   iconBtn: {
     width: 38,
     height: 38,
@@ -284,55 +259,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  notifBadge: {
+  notifDot: {
     position: 'absolute',
     top: 6,
     right: 6,
     width: 8,
     height: 8,
     borderRadius: 4,
-    borderWidth: 1.5,
-    borderColor: 'transparent',
   },
-  filterBar: {
-    paddingBottom: 12,
-  },
-  filterContent: {
-    paddingHorizontal: 14,
-    gap: 8,
-  },
+  filterBar: { paddingBottom: 12 },
+  filterContent: { paddingHorizontal: 14, gap: 8 },
   chip: {
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 20,
     borderWidth: 1,
   },
-  chipText: {
-    fontSize: 12,
-    fontFamily: 'Inter_500Medium',
-    letterSpacing: 0.2,
-  },
-  feedPadding: {
-    paddingTop: 10,
-  },
-  footerSpinner: {
-    paddingVertical: 20,
-  },
-  empty: {
-    alignItems: 'center',
-    paddingTop: 80,
-    paddingHorizontal: 32,
-    gap: 8,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontFamily: 'Inter_600SemiBold',
-    marginTop: 4,
-  },
-  emptyHint: {
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
+  chipText: { fontSize: 12, fontFamily: 'Inter_500Medium', letterSpacing: 0.2 },
+  feedPadding: { paddingTop: 10 },
+  footerSpinner: { paddingVertical: 20 },
+  empty: { alignItems: 'center', paddingTop: 80, paddingHorizontal: 32, gap: 8 },
+  emptyTitle: { fontSize: 16, fontFamily: 'Inter_600SemiBold', marginTop: 4 },
+  emptyHint: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center', lineHeight: 20 },
 });
