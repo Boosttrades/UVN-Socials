@@ -88,15 +88,16 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
   }
 
   // ── Glass card colours ───────────────────────────────────────────────────────
-  // AppBackground is always a dark forest green, so cards always use dark glass.
+  // Keep cards semi-transparent so the network animation shows through.
+  // ~52% opacity lets nodes and edges bleed through while text stays readable.
   const cardBg = isEmergency
-    ? 'rgba(40,10,8,0.80)'
-    : 'rgba(8,30,18,0.78)';
+    ? 'rgba(40,10,8,0.56)'
+    : 'rgba(6,22,14,0.54)';
 
-  // Border echoes the network node glow colour
+  // Glowing green border echoes the network node colour
   const cardBorder = isEmergency
-    ? 'rgba(248,113,113,0.42)'
-    : 'rgba(34,197,139,0.24)';
+    ? 'rgba(248,113,113,0.50)'
+    : 'rgba(34,197,139,0.32)';
 
   const divider = 'rgba(34,197,139,0.12)';
   const foreground = '#EDF2F0';

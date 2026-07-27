@@ -182,7 +182,11 @@ export default function ForYouScreen() {
       <OfflineBanner />
 
       {isLoading ? (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.feedPadding}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.feedPadding}
+          style={{ backgroundColor: 'transparent' }}
+        >
           <SkeletonFeedList />
         </ScrollView>
       ) : (
@@ -192,6 +196,7 @@ export default function ForYouScreen() {
           renderItem={({ item }) => <FeedCard post={item} />}
           contentContainerStyle={[styles.feedPadding, { paddingBottom: bottomPad }]}
           showsVerticalScrollIndicator={false}
+          style={{ backgroundColor: 'transparent' }}
           onEndReached={handleEndReached}
           onEndReachedThreshold={0.4}
           initialNumToRender={8}

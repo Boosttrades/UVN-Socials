@@ -37,6 +37,7 @@ export default function TabLayout() {
       />
 
       <Tabs
+        sceneContainerStyle={{ backgroundColor: 'transparent' }}
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: '#22C58B',
