@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { getApiBase } from '@/utils/api';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────[...]
 
 interface VersionInfo {
   version: string;
@@ -38,7 +38,7 @@ type UpdateState =
   | { kind: 'installing' }
   | { kind: 'error'; message: string; canRetry: boolean };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────[...]
 
 /** Returns > 0 if b is newer than a, 0 if equal, < 0 if a is newer. */
 function compareSemver(a: string, b: string): number {
@@ -57,7 +57,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
+// ─── Screen ────────────────────────────────────────────────────────��─[...]
 
 export default function UpdateScreen() {
   const colors = useColors();
@@ -76,15 +76,33 @@ export default function UpdateScreen() {
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomPad = Platform.OS === 'web' ? 40 : insets.bottom + 32;
 
-  // ── Check ────────────────────────────────────────────────────────────────
+  // ── Check ───────────────────────────────────────────────────────────[...]
 
   const checkForUpdates = useCallback(async () => {
     setState({ kind: 'checking' });
     try {
       const apiBase = getApiBase();
-      const res = await fetch(`${apiBase}/version`, { cache: 'no-store' });
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      // FIX #1: Add proper error handling with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+      const res = await fetch(`${apiBase}/version`, { 
+        cache: 'no-store',
+        signal: controller.signal 
+      });
+      
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        throw new Error(`Server returned ${res.status}: ${res.statusText}`);
+      }
+
       const info: VersionInfo = await res.json();
+
+      // FIX #2: Validate version info structure
+      if (!info.version || !info.apkUrl) {
+        throw new Error('Invalid version info: missing version or apkUrl');
+      }
 
       if (compareSemver(installedVersion, info.version) > 0) {
         setState({ kind: 'update-available', info, current: installedVersion });
@@ -92,9 +110,13 @@ export default function UpdateScreen() {
         setState({ kind: 'up-to-date', current: installedVersion });
       }
     } catch (err) {
+      const message = err instanceof Error 
+        ? err.message 
+        : 'Could not reach the update server.';
+      
       setState({
         kind: 'error',
-        message: err instanceof Error ? err.message : 'Could not reach the update server.',
+        message,
         canRetry: true,
       });
     }
@@ -105,12 +127,30 @@ export default function UpdateScreen() {
   async function downloadAndInstall(info: VersionInfo) {
     if (Platform.OS !== 'android') return;
 
-    // Build the full APK URL from the relative path in version.json
-    const apiBase = getApiBase(); // https://domain/api
-    const serverRoot = apiBase.replace(/\/api$/, ''); // https://domain
-    const apkUrl = info.apkUrl.startsWith('http')
-      ? info.apkUrl
-      : `${apiBase}/${info.apkUrl}`; // e.g. https://domain/api/download/latest.apk
+    // FIX #3: Improved URL construction with validation
+    const apiBase = getApiBase();
+    let apkUrl: string;
+
+    try {
+      if (info.apkUrl.startsWith('http://') || info.apkUrl.startsWith('https://')) {
+        apkUrl = info.apkUrl;
+      } else {
+        // Remove trailing slashes and construct properly
+        const cleanApiBase = apiBase.replace(/\/+$/, '');
+        const cleanPath = info.apkUrl.replace(/^\/+/, '');
+        apkUrl = `${cleanApiBase}/${cleanPath}`;
+      }
+
+      // Validate URL
+      new URL(apkUrl);
+    } catch (err) {
+      setState({
+        kind: 'error',
+        message: `Invalid APK URL: ${info.apkUrl}`,
+        canRetry: true,
+      });
+      return;
+    }
 
     const localUri = `${FileSystem.cacheDirectory}ughelli-vibes-update.apk`;
 
@@ -144,8 +184,13 @@ export default function UpdateScreen() {
 
       setState({ kind: 'installing' });
 
-      // getContentUriAsync gives a content:// URI required by Android 7+
-      const contentUri = await FileSystem.getContentUriAsync(result.uri);
+      // FIX #4: Improved error handling for content URI conversion
+      let contentUri: string;
+      try {
+        contentUri = await FileSystem.getContentUriAsync(result.uri);
+      } catch (err) {
+        throw new Error(`Failed to convert file URI: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      }
 
       await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
         data: contentUri,
@@ -157,9 +202,10 @@ export default function UpdateScreen() {
       // can re-open the installer if they cancelled it.
       setState({ kind: 'update-available', info, current: installedVersion });
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Download or installation failed.';
       setState({
         kind: 'error',
-        message: err instanceof Error ? err.message : 'Download or installation failed.',
+        message,
         canRetry: true,
       });
     }
@@ -404,7 +450,7 @@ export default function UpdateScreen() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
+// ─── Styles ──────────────────────────────────────────────────────────[...]
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
@@ -487,7 +533,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 20,
+    borderRadius: 28,
   },
   newBadgeText: {
     color: '#FFFFFF',
@@ -506,7 +552,7 @@ const styles = StyleSheet.create({
   versionLabel: { fontSize: 11, fontFamily: 'Inter_500Medium', textTransform: 'uppercase', letterSpacing: 0.6 },
   versionNum: { fontSize: 22, fontFamily: 'Inter_700Bold' },
   changelogCard: {
-    borderRadius: 14,
+    borderRadius: 20,
     borderWidth: 1,
     padding: 16,
     gap: 8,
@@ -519,7 +565,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     padding: 14,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
   },
   platformNoticeText: { fontSize: 13, fontFamily: 'Inter_400Regular', flex: 1 },
@@ -531,7 +577,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
     paddingVertical: 16,
-    borderRadius: 14,
+    borderRadius: 20,
   },
   primaryBtnText: {
     color: '#FFFFFF',
@@ -544,7 +590,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     marginTop: 8,
   },
