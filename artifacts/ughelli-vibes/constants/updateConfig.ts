@@ -25,4 +25,4 @@
  * - Set mandatory: false to let the user choose to update later.
  */
 export const UPDATE_JSON_URL =
-  'https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/YOUR_REPO/main/update.json';
+  'https://raw.githubusercontent.com/Boosttrades/UVN-updates-/main/update.json';
