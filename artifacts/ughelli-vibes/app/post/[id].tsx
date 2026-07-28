@@ -329,11 +329,11 @@ export default function PostDetailScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.root, { backgroundColor: colors.background }]}
+      style={styles.root}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       {/* Nav bar */}
-      <View style={[styles.navbar, { paddingTop: Platform.OS === 'web' ? 67 : insets.top, backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+      <View style={[styles.navbar, { paddingTop: Platform.OS === 'web' ? 67 : insets.top, backgroundColor: 'transparent', borderBottomColor: colors.border }]}>
         <Pressable onPress={() => router.back()} style={styles.backIcon} hitSlop={8} accessibilityLabel="Go back" accessibilityRole="button">
           <Feather name="arrow-left" size={22} color={colors.foreground} />
         </Pressable>

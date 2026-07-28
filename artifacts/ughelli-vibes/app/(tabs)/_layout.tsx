@@ -1,61 +1,51 @@
 import React from 'react';
-import { Dimensions, Platform, StyleSheet, useColorScheme, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useNotifications } from '@/contexts/NotificationsContext';
 import { Feather } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import NetworkBackground from '@/components/NetworkBackground';
-
-const { width: SW, height: SH } = Dimensions.get('window');
 
 export default function TabLayout() {
   const colors = useColors();
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
+  const { resolvedScheme } = useTheme();
+  const isDark = resolvedScheme === 'dark';
   const { unreadCount } = useNotifications();
   const isIOS = Platform.OS === 'ios';
 
+  // Tab-bar glass tint adapts to mode
+  const tabBarBg = isDark ? 'rgba(4,14,9,0.80)' : 'rgba(240,250,244,0.88)';
+  const tabBarBorder = isDark ? 'rgba(34,197,139,0.18)' : 'rgba(15,138,95,0.20)';
+  const blurTint = isDark ? 'dark' : 'light';
+
   return (
     /**
-     * Dark forest-green canvas + animated network fills the entire tab area.
-     * Every tab screen has a transparent (or glass) root so this shows through.
+     * Transparent root — the global AppBackground from _layout.tsx shows through.
+     * Every tab screen should also use a transparent root so the network is visible.
      */
     <View style={styles.root}>
-      {/* Base colour */}
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: '#061A12' }]} />
-
-      {/* Animated 3-D network */}
-      <NetworkBackground
-        color="#22C58B"
-        opacity={0.28}
-        nodeCount={34}
-        maxDistance={165}
-        width={SW}
-        height={SH}
-      />
-
       <Tabs
         sceneContainerStyle={{ backgroundColor: 'transparent' }}
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: '#22C58B',
-          tabBarInactiveTintColor: 'rgba(255,255,255,0.38)',
+          tabBarActiveTintColor: colors.primary,
+          tabBarInactiveTintColor: isDark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.38)',
           tabBarStyle: {
             position: 'absolute',
             backgroundColor: 'transparent',
             borderTopWidth: 1,
-            borderTopColor: 'rgba(34,197,139,0.18)',
+            borderTopColor: tabBarBorder,
             elevation: 0,
           },
           tabBarBackground: () => (
             <BlurView
               intensity={isIOS ? 90 : 60}
-              tint="dark"
+              tint={blurTint}
               style={[
                 StyleSheet.absoluteFill,
-                { backgroundColor: 'rgba(4,14,9,0.72)' },
+                { backgroundColor: tabBarBg },
               ]}
             />
           ),

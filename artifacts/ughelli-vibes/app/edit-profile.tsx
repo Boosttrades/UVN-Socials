@@ -91,12 +91,12 @@ export default function EditProfileScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <View style={styles.root}>
         {/* Navbar */}
         <View
           style={[
             styles.navbar,
-            { paddingTop: topInset + 6, backgroundColor: colors.background, borderBottomColor: colors.primary },
+            { paddingTop: topInset + 6, backgroundColor: 'transparent', borderBottomColor: colors.primary },
           ]}
         >
           <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8} accessibilityLabel="Go back" accessibilityRole="button">

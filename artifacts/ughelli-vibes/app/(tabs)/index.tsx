@@ -71,15 +71,15 @@ export default function ForYouScreen() {
     }
   }, [hasNextPage, isFetchingNextPage, activeFilter, fetchNextPage]);
 
-  // Glass header — always dark-canvas palette since AppBackground is always dark green
-  const headerBg = 'rgba(6,26,18,0.72)';
-  const headerBorder = 'rgba(34,197,139,0.20)';
-  const chipActiveBg = '#22C58B';
-  const chipInactiveBg = 'rgba(255,255,255,0.08)';
-  const chipInactiveBorder = 'rgba(34,197,139,0.20)';
-  const iconBtnBg = 'rgba(255,255,255,0.09)';
-  const foreground = '#EDF2F0';
-  const mutedFg = 'rgba(255,255,255,0.50)';
+  // Glass header — adapts to dark / light mode
+  const headerBg    = isDark ? 'rgba(6,26,18,0.78)'     : 'rgba(240,250,244,0.88)';
+  const headerBorder = isDark ? 'rgba(34,197,139,0.20)'  : 'rgba(15,138,95,0.20)';
+  const chipActiveBg = colors.primary;
+  const chipInactiveBg    = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)';
+  const chipInactiveBorder = isDark ? 'rgba(34,197,139,0.20)'  : 'rgba(15,138,95,0.20)';
+  const iconBtnBg  = isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.06)';
+  const foreground = colors.foreground;
+  const mutedFg    = colors.mutedForeground;
 
   return (
     /* Root is transparent — global AppBackground from _layout.tsx shows through */

@@ -133,7 +133,7 @@ export default function UserProfileScreen() {
   return (
     <>
       <FlatList
-        style={[styles.root, { backgroundColor: colors.background }]}
+        style={styles.root}
         data={userPosts}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => <FeedCard post={item} />}

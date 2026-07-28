@@ -25,16 +25,25 @@ import { useTheme } from '@/contexts/ThemeContext';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
-/** Persistent full-screen network — just the animated SVG, no dark bg.
- *  The dark base colour is set on GestureHandlerRootView below. */
+/** Persistent full-screen neural-network background.
+ *  Adapts base colour and network tint to the active colour scheme. */
 function AppBackground() {
+  const { resolvedScheme } = useTheme();
+  const isDark = resolvedScheme === 'dark';
+
+  const baseBg    = isDark ? '#061A12' : '#EAF5EE';
+  const netColor  = isDark ? '#22C58B' : '#0F8A5F';
+  const netOpacity = isDark ? 0.30 : 0.20;
+
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* Solid base so neither mode shows raw white or black */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: baseBg }]} />
       <NetworkBackground
-        color="#22C58B"
-        opacity={0.30}
-        nodeCount={34}
-        maxDistance={165}
+        color={netColor}
+        opacity={netOpacity}
+        nodeCount={32}
+        maxDistance={155}
         width={SW}
         height={SH}
       />
@@ -145,6 +154,8 @@ export default function RootLayout() {
             persistOptions={{ persister: asyncStoragePersister, maxAge: 1000 * 60 * 60 * 24 }}
           >
             <GestureHandlerRootView style={{ flex: 1 }}>
+              {/* Global neural-network background — visible on every screen */}
+              <AppBackground />
               <AuthProvider>
                 <NotificationsProvider>
                   <RootLayoutNav />

@@ -99,12 +99,12 @@ export default function ActivityScreen() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.background }]}>
+    <View style={styles.root}>
       {/* Header */}
       <View
         style={[
           styles.header,
-          { paddingTop: topInset + 10, backgroundColor: colors.background, borderBottomColor: colors.primary },
+          { paddingTop: topInset + 10, backgroundColor: 'transparent', borderBottomColor: colors.primary },
         ]}
       >
         <View>
@@ -123,7 +123,7 @@ export default function ActivityScreen() {
       </View>
 
       {/* Filter tabs */}
-      <View style={[styles.tabRow, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+      <View style={[styles.tabRow, { backgroundColor: 'transparent', borderBottomColor: colors.border }]}>
         {TABS.map((tab) => {
           const active = tab === activeTab;
           return (
