@@ -1,0 +1,69 @@
+Implement an Android APK update system for my Expo React Native app (UVN Socials).
+
+Goal:
+The app should be able to check for new APK versions from a remote update file and guide the user through installing the update.
+
+Architecture:
+
+1. The app must NOT connect directly to Expo or contain any Expo tokens.
+2. The app should only check a permanent public update URL that I control.
+3. The update URL will point to a GitHub-hosted JSON file called update.json.
+4. I will manually edit this JSON file whenever I release a new APK.
+
+Update JSON format:
+
+{
+  "versionCode": 1,
+  "versionName": "1.0.0",
+  "apkUrl": "",
+  "mandatory": true,
+  "releaseNotes": "Optional update information"
+}
+
+Update logic:
+
+1. On app startup and optionally from the settings screen, check the update.json URL.
+2. Read the versionCode from update.json.
+3. Compare it with the currently installed app versionCode from the APK.
+4. If the remote versionCode is greater than the installed versionCode:
+   - Show an update available screen.
+   - Because mandatory is true, prevent normal app usage until update is completed.
+   - Display versionName and releaseNotes if available.
+5. If versionCode is equal or lower:
+   - Continue normally.
+6. Never trigger an update just because the APK URL changed. VersionCode is the source of truth.
+
+APK handling:
+
+1. When an update is available:
+   - Download the APK from apkUrl.
+   - Show download progress to the user.
+   - Save the APK locally.
+   - Open Android's package installer.
+   - Let Android show the installation confirmation prompt.
+2. Do not attempt silent installation because normal Android apps cannot do this.
+3. Ensure the downloaded APK replaces the existing app by requiring the same package name and signing key.
+
+Version management:
+
+1. Use Expo app version configuration.
+2. Read the installed app versionCode from the actual APK, not from a manually stored value.
+3. I will manually increase versionCode and versionName every time I create a new Expo APK build.
+4. The update.json values must match the new APK values.
+
+Security requirements:
+
+- Do not store private tokens, API keys, Expo tokens, or secrets inside the app.
+- The only hardcoded remote address should be the public update.json URL.
+- Validate that downloaded APKs come from the same app signing identity where possible.
+
+Implementation requirements:
+
+- Make the updater compatible with Expo Android builds.
+- Add a clean update screen with:
+  - Current version
+  - New version
+  - Release notes
+  - Download progress bar
+  - Install update button when download completes
+- Keep the update system modular so the update URL can be changed later without rewriting the whole app.

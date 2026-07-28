@@ -1,3 +1,15 @@
+/**
+ * Update Screen
+ * -------------
+ * Handles both:
+ *   1. Manual check (reachable from Settings → "Check for Updates")
+ *   2. Mandatory-update gate (navigated here automatically by MandatoryUpdateGate
+ *      in _layout.tsx when the remote versionCode > installed versionCode AND
+ *      mandatory === true).
+ *
+ * All remote checking is delegated to UpdateContext (which fires on startup).
+ * This screen owns only the download + install state machine.
+ */
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
@@ -9,47 +21,23 @@ import {
   Text,
   View,
 } from 'react-native';
-import * as Application from 'expo-application';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
-import { getApiBase } from '@/utils/api';
+import { useUpdate, type UpdateInfo } from '@/contexts/UpdateContext';
 
-// ─── Types ───────────────────────────────────────────────────────────[...]
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-interface VersionInfo {
-  version: string;
-  versionCode: number;
-  /** Relative path served by the API, e.g. "download/ughelli-vibes-latest.apk" */
-  apkUrl: string;
-  changelog: string;
-  releaseDate: string;
-}
-
-type UpdateState =
+type DownloadState =
   | { kind: 'idle' }
-  | { kind: 'checking' }
-  | { kind: 'up-to-date'; current: string }
-  | { kind: 'update-available'; info: VersionInfo; current: string }
-  | { kind: 'downloading'; info: VersionInfo; progress: number; receivedBytes: number; totalBytes: number }
+  | { kind: 'downloading'; progress: number; receivedBytes: number; totalBytes: number }
   | { kind: 'installing' }
-  | { kind: 'error'; message: string; canRetry: boolean };
+  | { kind: 'download-error'; message: string };
 
-// ─── Helpers ──────────────────────────────────────────────────────────[...]
-
-/** Returns > 0 if b is newer than a, 0 if equal, < 0 if a is newer. */
-function compareSemver(a: string, b: string): number {
-  const pa = a.split('.').map(Number);
-  const pb = b.split('.').map(Number);
-  for (let i = 0; i < 3; i++) {
-    const diff = (pb[i] ?? 0) - (pa[i] ?? 0);
-    if (diff !== 0) return diff;
-  }
-  return 0;
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -57,107 +45,61 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// ─── Screen ────────────────────────────────────────────────────────��─[...]
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function UpdateScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const [state, setState] = useState<UpdateState>({ kind: 'idle' });
+
+  // All check/result state lives in the context
+  const {
+    status,
+    updateInfo,
+    installedVersionCode,
+    installedVersionName,
+    error: checkError,
+    checkForUpdates,
+  } = useUpdate();
+
+  // Download/install state is local to this screen
+  const [dl, setDl] = useState<DownloadState>({ kind: 'idle' });
   const [trackWidth, setTrackWidth] = useState(0);
 
   const onTrackLayout = useCallback((e: LayoutChangeEvent) => {
     setTrackWidth(e.nativeEvent.layout.width);
   }, []);
 
-  const installedVersion =
-    Application.nativeApplicationVersion ?? '1.0.0';
-
+  const isMandatory = updateInfo?.mandatory === true;
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomPad = Platform.OS === 'web' ? 40 : insets.bottom + 32;
 
-  // ── Check ───────────────────────────────────────────────────────────[...]
+  // ── Download & Install ──────────────────────────────────────────────────────
 
-  const checkForUpdates = useCallback(async () => {
-    setState({ kind: 'checking' });
-    try {
-      const apiBase = getApiBase();
-      // FIX #1: Add proper error handling with timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-
-      const res = await fetch(`${apiBase}/version`, { 
-        cache: 'no-store',
-        signal: controller.signal 
-      });
-      
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        throw new Error(`Server returned ${res.status}: ${res.statusText}`);
-      }
-
-      const info: VersionInfo = await res.json();
-
-      // FIX #2: Validate version info structure
-      if (!info.version || !info.apkUrl) {
-        throw new Error('Invalid version info: missing version or apkUrl');
-      }
-
-      if (compareSemver(installedVersion, info.version) > 0) {
-        setState({ kind: 'update-available', info, current: installedVersion });
-      } else {
-        setState({ kind: 'up-to-date', current: installedVersion });
-      }
-    } catch (err) {
-      const message = err instanceof Error 
-        ? err.message 
-        : 'Could not reach the update server.';
-      
-      setState({
-        kind: 'error',
-        message,
-        canRetry: true,
-      });
-    }
-  }, [installedVersion]);
-
-  // ── Download & Install ────────────────────────────────────────────────────
-
-  async function downloadAndInstall(info: VersionInfo) {
+  async function downloadAndInstall(info: UpdateInfo) {
     if (Platform.OS !== 'android') return;
 
-    // FIX #3: Improved URL construction with validation
-    const apiBase = getApiBase();
+    // Build the full APK URL
     let apkUrl: string;
-
     try {
       if (info.apkUrl.startsWith('http://') || info.apkUrl.startsWith('https://')) {
         apkUrl = info.apkUrl;
       } else {
-        // Remove trailing slashes and construct properly
-        const cleanApiBase = apiBase.replace(/\/+$/, '');
-        const cleanPath = info.apkUrl.replace(/^\/+/, '');
-        apkUrl = `${cleanApiBase}/${cleanPath}`;
+        throw new Error(`apkUrl must be a full https:// URL. Got: "${info.apkUrl}"`);
       }
-
-      // Validate URL
-      new URL(apkUrl);
+      new URL(apkUrl); // validate
     } catch (err) {
-      setState({
-        kind: 'error',
-        message: `Invalid APK URL: ${info.apkUrl}`,
-        canRetry: true,
+      setDl({
+        kind: 'download-error',
+        message: err instanceof Error ? err.message : 'Invalid APK URL in update.json',
       });
       return;
     }
 
-    const localUri = `${FileSystem.cacheDirectory}ughelli-vibes-update.apk`;
-
-    // Remove stale file
+    const localUri = `${FileSystem.cacheDirectory}uvn-update.apk`;
     try { await FileSystem.deleteAsync(localUri, { idempotent: true }); } catch {}
 
-    setState({ kind: 'downloading', info, progress: 0, receivedBytes: 0, totalBytes: 0 });
+    setDl({ kind: 'downloading', progress: 0, receivedBytes: 0, totalBytes: 0 });
 
     try {
       const downloadResumable = FileSystem.createDownloadResumable(
@@ -169,28 +111,21 @@ export default function UpdateScreen() {
             totalBytesExpectedToWrite > 0
               ? totalBytesWritten / totalBytesExpectedToWrite
               : 0;
-          setState({
+          setDl({
             kind: 'downloading',
-            info,
             progress,
             receivedBytes: totalBytesWritten,
             totalBytes: totalBytesExpectedToWrite,
           });
-        }
+        },
       );
 
       const result = await downloadResumable.downloadAsync();
-      if (!result?.uri) throw new Error('Download produced no file.');
+      if (!result?.uri) throw new Error('Download completed but produced no file.');
 
-      setState({ kind: 'installing' });
+      setDl({ kind: 'installing' });
 
-      // FIX #4: Improved error handling for content URI conversion
-      let contentUri: string;
-      try {
-        contentUri = await FileSystem.getContentUriAsync(result.uri);
-      } catch (err) {
-        throw new Error(`Failed to convert file URI: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      }
+      const contentUri = await FileSystem.getContentUriAsync(result.uri);
 
       await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
         data: contentUri,
@@ -198,52 +133,113 @@ export default function UpdateScreen() {
         type: 'application/vnd.android.package-archive',
       });
 
-      // Installer is now running; go back to update-available so the user
-      // can re-open the installer if they cancelled it.
-      setState({ kind: 'update-available', info, current: installedVersion });
+      // Installer launched — reset so user can retry if they cancelled it
+      setDl({ kind: 'idle' });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Download or installation failed.';
-      setState({
-        kind: 'error',
-        message,
-        canRetry: true,
+      setDl({
+        kind: 'download-error',
+        message: err instanceof Error ? err.message : 'Download or installation failed.',
       });
     }
   }
 
-  // ── Render helpers ────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
 
-  function renderContent() {
-    switch (state.kind) {
-      case 'idle':
-        return (
-          <View style={styles.centreBlock}>
-            <View style={[styles.bigIcon, { backgroundColor: colors.primary + '18' }]}>
-              <Feather name="download-cloud" size={48} color={colors.primary} />
-            </View>
-            <Text style={[styles.bigTitle, { color: colors.foreground }]}>
-              Check for Updates
-            </Text>
-            <Text style={[styles.bigSub, { color: colors.mutedForeground }]}>
-              Currently installed: {installedVersion}
-            </Text>
-            <Pressable
-              style={[styles.primaryBtn, { backgroundColor: colors.primary, marginTop: 8 }]}
-              onPress={checkForUpdates}
-            >
-              <Feather name="refresh-cw" size={18} color="#FFFFFF" />
-              <Text style={styles.primaryBtnText}>Check for Updates</Text>
-            </Pressable>
+  function renderBody() {
+    // Downloading / installing takes priority over context state
+    if (dl.kind === 'downloading') {
+      const pct = Math.round(dl.progress * 100);
+      return (
+        <View style={styles.centreBlock}>
+          <View style={[styles.bigIcon, { backgroundColor: colors.primary + '18' }]}>
+            <Feather name="download-cloud" size={48} color={colors.primary} />
           </View>
-        );
+          <Text style={[styles.bigTitle, { color: colors.foreground }]}>
+            Downloading update…
+          </Text>
+          <Text style={[styles.bigSub, { color: colors.mutedForeground }]}>
+            {updateInfo?.versionName ?? ''}
+            {dl.totalBytes > 0
+              ? `  ·  ${formatBytes(dl.receivedBytes)} / ${formatBytes(dl.totalBytes)}`
+              : ''}
+          </Text>
+          <View
+            style={[styles.progressTrack, { backgroundColor: colors.muted }]}
+            onLayout={onTrackLayout}
+          >
+            <View
+              style={[
+                styles.progressFill,
+                { backgroundColor: colors.primary, width: Math.round(trackWidth * dl.progress) },
+              ]}
+            />
+          </View>
+          <Text style={[styles.pctLabel, { color: colors.primary }]}>{pct}%</Text>
+        </View>
+      );
+    }
 
+    if (dl.kind === 'installing') {
+      return (
+        <View style={styles.centreBlock}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.bigTitle, { color: colors.foreground }]}>
+            Launching installer…
+          </Text>
+          <Text style={[styles.bigSub, { color: colors.mutedForeground }]}>
+            Follow the prompts in the Android installer to finish.
+          </Text>
+        </View>
+      );
+    }
+
+    if (dl.kind === 'download-error') {
+      return (
+        <View style={styles.centreBlock}>
+          <View style={[styles.bigIcon, { backgroundColor: colors.emergencyBg ?? '#FEF2F2' }]}>
+            <Feather name="alert-circle" size={48} color={colors.emergency} />
+          </View>
+          <Text style={[styles.bigTitle, { color: colors.foreground }]}>Download failed</Text>
+          <Text style={[styles.bigSub, { color: colors.mutedForeground }]}>{dl.message}</Text>
+          <Pressable
+            style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+            onPress={() => setDl({ kind: 'idle' })}
+          >
+            <Feather name="refresh-cw" size={16} color="#FFFFFF" />
+            <Text style={styles.primaryBtnText}>Try again</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    // dl.kind === 'idle' — show context-driven state
+    switch (status) {
+      case 'idle':
       case 'checking':
         return (
           <View style={styles.centreBlock}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.statusLabel, { color: colors.mutedForeground }]}>
-              Checking for updates…
+            {status === 'checking' ? (
+              <ActivityIndicator size="large" color={colors.primary} />
+            ) : (
+              <View style={[styles.bigIcon, { backgroundColor: colors.primary + '18' }]}>
+                <Feather name="download-cloud" size={48} color={colors.primary} />
+              </View>
+            )}
+            <Text style={[styles.bigTitle, { color: colors.foreground }]}>
+              {status === 'checking' ? 'Checking for updates…' : 'Check for Updates'}
             </Text>
+            <Text style={[styles.bigSub, { color: colors.mutedForeground }]}>
+              Installed: v{installedVersionName} (build {installedVersionCode})
+            </Text>
+            {status === 'idle' && (
+              <Pressable
+                style={[styles.primaryBtn, { backgroundColor: colors.primary, marginTop: 8 }]}
+                onPress={checkForUpdates}
+              >
+                <Feather name="refresh-cw" size={18} color="#FFFFFF" />
+                <Text style={styles.primaryBtnText}>Check for Updates</Text>
+              </Pressable>
+            )}
           </View>
         );
 
@@ -257,7 +253,7 @@ export default function UpdateScreen() {
               You're on the latest version
             </Text>
             <Text style={[styles.bigSub, { color: colors.mutedForeground }]}>
-              Ughelli Vibes TV {state.current}
+              Ughelli Vibes TV v{installedVersionName}
             </Text>
             <Pressable
               style={[styles.secondaryBtn, { borderColor: colors.border }]}
@@ -272,10 +268,20 @@ export default function UpdateScreen() {
         );
 
       case 'update-available': {
-        const { info, current } = state;
+        if (!updateInfo) return null;
         const isAndroid = Platform.OS === 'android';
         return (
           <View style={styles.updateBlock}>
+            {/* Mandatory warning */}
+            {isMandatory && (
+              <View style={[styles.mandatoryBanner, { backgroundColor: colors.emergency + '18', borderColor: colors.emergency + '40' }]}>
+                <Feather name="alert-triangle" size={15} color={colors.emergency} />
+                <Text style={[styles.mandatoryText, { color: colors.emergency }]}>
+                  This update is required. You cannot use the app until it is installed.
+                </Text>
+              </View>
+            )}
+
             {/* Badge */}
             <View style={[styles.newBadge, { backgroundColor: colors.primary }]}>
               <Feather name="zap" size={13} color="#FFFFFF" />
@@ -286,39 +292,42 @@ export default function UpdateScreen() {
             <View style={[styles.versionRow, { borderColor: colors.border }]}>
               <View style={styles.versionCol}>
                 <Text style={[styles.versionLabel, { color: colors.mutedForeground }]}>Installed</Text>
-                <Text style={[styles.versionNum, { color: colors.foreground }]}>{current}</Text>
+                <Text style={[styles.versionNum, { color: colors.foreground }]}>
+                  v{installedVersionName}
+                </Text>
+                <Text style={[styles.buildNum, { color: colors.mutedForeground }]}>
+                  build {installedVersionCode}
+                </Text>
               </View>
               <Feather name="arrow-right" size={18} color={colors.mutedForeground} />
               <View style={styles.versionCol}>
                 <Text style={[styles.versionLabel, { color: colors.mutedForeground }]}>Latest</Text>
-                <Text style={[styles.versionNum, { color: colors.primary }]}>{info.version}</Text>
+                <Text style={[styles.versionNum, { color: colors.primary }]}>
+                  v{updateInfo.versionName}
+                </Text>
+                <Text style={[styles.buildNum, { color: colors.mutedForeground }]}>
+                  build {updateInfo.versionCode}
+                </Text>
               </View>
             </View>
 
-            {/* Changelog */}
-            {info.changelog ? (
+            {/* Release notes */}
+            {updateInfo.releaseNotes ? (
               <View style={[styles.changelogCard, { backgroundColor: colors.muted, borderColor: colors.border }]}>
                 <Text style={[styles.changelogTitle, { color: colors.foreground }]}>
                   What's new
                 </Text>
                 <Text style={[styles.changelogBody, { color: colors.mutedForeground }]}>
-                  {info.changelog}
+                  {updateInfo.releaseNotes}
                 </Text>
               </View>
-            ) : null}
-
-            {/* Release date */}
-            {info.releaseDate ? (
-              <Text style={[styles.releaseMeta, { color: colors.mutedForeground }]}>
-                Released {info.releaseDate}
-              </Text>
             ) : null}
 
             {/* CTA */}
             {isAndroid ? (
               <Pressable
                 style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
-                onPress={() => downloadAndInstall(info)}
+                onPress={() => downloadAndInstall(updateInfo)}
               >
                 <Feather name="download" size={18} color="#FFFFFF" />
                 <Text style={styles.primaryBtnText}>Download &amp; Install</Text>
@@ -335,114 +344,73 @@ export default function UpdateScreen() {
         );
       }
 
-      case 'downloading': {
-        const { info, progress, receivedBytes, totalBytes } = state;
-        const pct = Math.round(progress * 100);
-        return (
-          <View style={styles.centreBlock}>
-            <View style={[styles.bigIcon, { backgroundColor: colors.primary + '18' }]}>
-              <Feather name="download-cloud" size={48} color={colors.primary} />
-            </View>
-            <Text style={[styles.bigTitle, { color: colors.foreground }]}>
-              Downloading update…
-            </Text>
-            <Text style={[styles.bigSub, { color: colors.mutedForeground }]}>
-              {info.version}
-              {totalBytes > 0 ? `  ·  ${formatBytes(receivedBytes)} / ${formatBytes(totalBytes)}` : ''}
-            </Text>
-
-            {/* Progress bar */}
-            <View
-              style={[styles.progressTrack, { backgroundColor: colors.muted }]}
-              onLayout={onTrackLayout}
-            >
-              <View
-                style={[
-                  styles.progressFill,
-                  { backgroundColor: colors.primary, width: Math.round(trackWidth * progress) },
-                ]}
-              />
-            </View>
-            <Text style={[styles.pctLabel, { color: colors.primary }]}>{pct}%</Text>
-          </View>
-        );
-      }
-
-      case 'installing':
-        return (
-          <View style={styles.centreBlock}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.bigTitle, { color: colors.foreground }]}>
-              Launching installer…
-            </Text>
-            <Text style={[styles.bigSub, { color: colors.mutedForeground }]}>
-              Follow the prompts in the Android installer to finish.
-            </Text>
-          </View>
-        );
-
       case 'error':
         return (
           <View style={styles.centreBlock}>
-            <View style={[styles.bigIcon, { backgroundColor: '#FEF2F2' }]}>
-              <Feather name="alert-circle" size={48} color="#DC2626" />
+            <View style={[styles.bigIcon, { backgroundColor: colors.emergencyBg ?? '#FEF2F2' }]}>
+              <Feather name="alert-circle" size={48} color={colors.emergency} />
             </View>
             <Text style={[styles.bigTitle, { color: colors.foreground }]}>
-              Something went wrong
+              Couldn't check for updates
             </Text>
             <Text style={[styles.bigSub, { color: colors.mutedForeground }]}>
-              {state.message}
+              {checkError}
             </Text>
-            {state.canRetry && (
-              <Pressable
-                style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
-                onPress={checkForUpdates}
-              >
-                <Feather name="refresh-cw" size={16} color="#FFFFFF" />
-                <Text style={styles.primaryBtnText}>Try again</Text>
-              </Pressable>
-            )}
+            <Pressable
+              style={[styles.primaryBtn, { backgroundColor: colors.primary }]}
+              onPress={checkForUpdates}
+            >
+              <Feather name="refresh-cw" size={16} color="#FFFFFF" />
+              <Text style={styles.primaryBtnText}>Try again</Text>
+            </Pressable>
           </View>
         );
     }
   }
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {/* Navbar */}
-      <View
-        style={[
-          styles.navbar,
-          {
-            paddingTop: topInset + 6,
-            backgroundColor: colors.background,
-            borderBottomColor: colors.primary,
-          },
-        ]}
-      >
-        <Pressable
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          hitSlop={8}
-          accessibilityLabel="Go back"
-          accessibilityRole="button"
+    <View style={styles.root}>
+      {/* Navbar — hidden when mandatory (no escape) */}
+      {!isMandatory && (
+        <View
+          style={[
+            styles.navbar,
+            { paddingTop: topInset + 6, backgroundColor: 'transparent', borderBottomColor: colors.primary },
+          ]}
         >
-          <Feather name="arrow-left" size={22} color={colors.foreground} />
-        </Pressable>
-        <Text style={[styles.navTitle, { color: colors.foreground }]}>Check for Updates</Text>
-        <View style={{ width: 36 }} />
-      </View>
+          <Pressable
+            onPress={() => router.back()}
+            style={styles.backBtn}
+            hitSlop={8}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+          >
+            <Feather name="arrow-left" size={22} color={colors.foreground} />
+          </Pressable>
+          <Text style={[styles.navTitle, { color: colors.foreground }]}>Check for Updates</Text>
+          <View style={{ width: 36 }} />
+        </View>
+      )}
+
+      {/* Mandatory header — shown instead of navbar when update is required */}
+      {isMandatory && (
+        <View style={[styles.mandatoryHeader, { paddingTop: topInset + 16 }]}>
+          <Text style={[styles.navTitle, { color: colors.foreground, textAlign: 'center' }]}>
+            Update Required
+          </Text>
+        </View>
+      )}
 
       <ScrollView
         contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPad }]}
         showsVerticalScrollIndicator={false}
       >
-        {renderContent()}
+        {renderBody()}
 
-        {/* Always show current version at bottom */}
-        {state.kind !== 'checking' && state.kind !== 'idle' && (
+        {/* Footer version — shown when not actively downloading */}
+        {dl.kind === 'idle' && status !== 'idle' && status !== 'checking' && (
           <Text style={[styles.footerVersion, { color: colors.mutedForeground }]}>
-            Ughelli Vibes TV · installed {installedVersion}
+            Installed: v{installedVersionName} · build {installedVersionCode}
           </Text>
         )}
       </ScrollView>
@@ -450,7 +418,7 @@ export default function UpdateScreen() {
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────[...]
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
@@ -462,6 +430,11 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     borderBottomWidth: 2,
   },
+  mandatoryHeader: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    alignItems: 'center',
+  },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   navTitle: { fontSize: 17, fontFamily: 'Inter_700Bold' },
   scrollContent: {
@@ -470,7 +443,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
 
-  // ── Centred layout (checking / up-to-date / downloading / error)
+  // ── Centred layout
   centreBlock: {
     flex: 1,
     alignItems: 'center',
@@ -486,22 +459,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 8,
   },
-  bigTitle: {
-    fontSize: 20,
-    fontFamily: 'Inter_700Bold',
-    textAlign: 'center',
-  },
+  bigTitle: { fontSize: 20, fontFamily: 'Inter_700Bold', textAlign: 'center' },
   bigSub: {
     fontSize: 14,
     fontFamily: 'Inter_400Regular',
     textAlign: 'center',
     lineHeight: 20,
     maxWidth: 300,
-  },
-  statusLabel: {
-    fontSize: 15,
-    fontFamily: 'Inter_400Regular',
-    marginTop: 12,
   },
 
   // ── Progress bar
@@ -512,20 +476,20 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginTop: 8,
   },
-  progressFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  pctLabel: {
-    fontSize: 15,
-    fontFamily: 'Inter_700Bold',
-  },
+  progressFill: { height: '100%', borderRadius: 4 },
+  pctLabel: { fontSize: 15, fontFamily: 'Inter_700Bold' },
 
   // ── Update available layout
-  updateBlock: {
-    gap: 20,
-    paddingTop: 12,
+  updateBlock: { gap: 20, paddingTop: 12 },
+  mandatoryBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
   },
+  mandatoryText: { fontSize: 13, fontFamily: 'Inter_500Medium', flex: 1, lineHeight: 18 },
   newBadge: {
     flexDirection: 'row',
     alignSelf: 'flex-start',
@@ -535,11 +499,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 28,
   },
-  newBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontFamily: 'Inter_600SemiBold',
-  },
+  newBadgeText: { color: '#FFFFFF', fontSize: 13, fontFamily: 'Inter_600SemiBold' },
   versionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -548,9 +508,15 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderBottomWidth: 1,
   },
-  versionCol: { alignItems: 'center', gap: 4 },
-  versionLabel: { fontSize: 11, fontFamily: 'Inter_500Medium', textTransform: 'uppercase', letterSpacing: 0.6 },
+  versionCol: { alignItems: 'center', gap: 2 },
+  versionLabel: {
+    fontSize: 11,
+    fontFamily: 'Inter_500Medium',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
   versionNum: { fontSize: 22, fontFamily: 'Inter_700Bold' },
+  buildNum: { fontSize: 11, fontFamily: 'Inter_400Regular' },
   changelogCard: {
     borderRadius: 20,
     borderWidth: 1,
@@ -559,7 +525,6 @@ const styles = StyleSheet.create({
   },
   changelogTitle: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
   changelogBody: { fontSize: 14, fontFamily: 'Inter_400Regular', lineHeight: 20 },
-  releaseMeta: { fontSize: 12, fontFamily: 'Inter_400Regular', textAlign: 'center' },
   platformNotice: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -579,11 +544,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 20,
   },
-  primaryBtnText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontFamily: 'Inter_700Bold',
-  },
+  primaryBtnText: { color: '#FFFFFF', fontSize: 16, fontFamily: 'Inter_700Bold' },
   secondaryBtn: {
     flexDirection: 'row',
     alignItems: 'center',

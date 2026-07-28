@@ -20,6 +20,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { NotificationsProvider } from '@/contexts/NotificationsContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
+import { UpdateProvider, useUpdate } from '@/contexts/UpdateContext';
 import NetworkBackground from '@/components/NetworkBackground';
 import { useTheme } from '@/contexts/ThemeContext';
 
@@ -103,10 +104,34 @@ function AuthGate() {
   return null;
 }
 
+/**
+ * When a mandatory update is available, redirects the user to /update and
+ * keeps them there until they install the new APK. Non-mandatory updates are
+ * surfaced passively via the Settings → "Check for Updates" flow.
+ */
+function MandatoryUpdateGate() {
+  const { status, updateInfo } = useUpdate();
+  const router = useRouter();
+  const segments = useSegments();
+
+  useEffect(() => {
+    if (status === 'update-available' && updateInfo?.mandatory) {
+      const onUpdateScreen = segments[0] === 'update';
+      if (!onUpdateScreen) {
+        router.replace('/update');
+      }
+    }
+  }, [status, updateInfo, segments]);
+
+  return null;
+}
+
 function RootLayoutNav() {
   return (
     <>
       <AuthGate />
+      {/* Redirects to /update and blocks navigation when a mandatory update exists */}
+      <MandatoryUpdateGate />
       {/*
         contentStyle backgroundColor must be transparent on every screen so the
         persistent AppBackground (network grid) shows through from behind.
@@ -148,22 +173,24 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <ErrorBoundary>
-          <PersistQueryClientProvider
-            client={queryClient}
-            persistOptions={{ persister: asyncStoragePersister, maxAge: 1000 * 60 * 60 * 24 }}
-          >
-            <GestureHandlerRootView style={{ flex: 1 }}>
-              {/* Global neural-network background — visible on every screen */}
-              <AppBackground />
-              <AuthProvider>
-                <NotificationsProvider>
-                  <RootLayoutNav />
-                </NotificationsProvider>
-              </AuthProvider>
-            </GestureHandlerRootView>
-          </PersistQueryClientProvider>
-        </ErrorBoundary>
+        <UpdateProvider>
+          <ErrorBoundary>
+            <PersistQueryClientProvider
+              client={queryClient}
+              persistOptions={{ persister: asyncStoragePersister, maxAge: 1000 * 60 * 60 * 24 }}
+            >
+              <GestureHandlerRootView style={{ flex: 1 }}>
+                {/* Global neural-network background — visible on every screen */}
+                <AppBackground />
+                <AuthProvider>
+                  <NotificationsProvider>
+                    <RootLayoutNav />
+                  </NotificationsProvider>
+                </AuthProvider>
+              </GestureHandlerRootView>
+            </PersistQueryClientProvider>
+          </ErrorBoundary>
+        </UpdateProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );
