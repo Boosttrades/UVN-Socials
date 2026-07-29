@@ -9,7 +9,9 @@ import {
   Text,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,7 +23,7 @@ type FilterTab = 'All' | 'Reactions' | 'Follows' | 'Mentions' | 'System';
 const TABS: FilterTab[] = ['All', 'Reactions', 'Follows', 'Mentions', 'System'];
 
 const NOTIF_ICON: Record<NotifType, string> = {
-  like: 'thumbs-up',
+  like: 'heart',
   comment: 'message-circle',
   follow: 'user-plus',
   mention: 'at-sign',
@@ -29,8 +31,8 @@ const NOTIF_ICON: Record<NotifType, string> = {
   system: 'bell',
 };
 
-const NOTIF_COLOR: Record<NotifType, string> = {
-  like: '#0F8A5F',
+const NOTIF_BADGE_COLOR: Record<NotifType, string> = {
+  like: '#E11D48',
   comment: '#1D4ED8',
   follow: '#7C3AED',
   mention: '#DB2777',
@@ -70,11 +72,45 @@ function timeAgo(isoString: string): string {
   return new Date(isoString).toLocaleDateString();
 }
 
+// ─── ActorAvatar ──────────────────────────────────────────────────────────────
+
+interface ActorAvatarProps {
+  actor: { id: string; name: string; username: string; profileImage: string | null };
+  type: NotifType;
+}
+
+function ActorAvatar({ actor, type }: ActorAvatarProps) {
+  const badgeColor = NOTIF_BADGE_COLOR[type];
+  const bgColor = avatarColor(actor.id);
+
+  return (
+    <View style={styles.avatarWrap}>
+      {actor.profileImage ? (
+        <Image
+          source={{ uri: actor.profileImage }}
+          style={styles.actorAvatar}
+          contentFit="cover"
+          transition={200}
+        />
+      ) : (
+        <View style={[styles.actorAvatar, { backgroundColor: bgColor, alignItems: 'center', justifyContent: 'center' }]}>
+          <Text style={styles.actorInitials}>{initials(actor.name || actor.username)}</Text>
+        </View>
+      )}
+      {/* Type badge */}
+      <View style={[styles.typeBadge, { backgroundColor: badgeColor }]}>
+        <Feather name={NOTIF_ICON[type] as any} size={9} color="#fff" />
+      </View>
+    </View>
+  );
+}
+
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ActivityScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { token } = useAuth();
   const { notifications, unreadCount: unread, loading, refreshing, refresh, markAllRead, markOneRead } = useNotifications();
 
@@ -95,6 +131,33 @@ export default function ActivityScreen() {
       : activeTab === 'Mentions'
       ? notifications.filter((n) => n.type === 'mention')
       : notifications.filter((n) => n.type === 'system' || n.type === 'verification');
+
+  // ── Navigation ─────────────────────────────────────────────────────────────
+
+  function handleNotifPress(item: typeof notifications[number]) {
+    // Mark as read first
+    if (!item.read) markOneRead(item.id);
+
+    // Navigate based on type
+    switch (item.type) {
+      case 'like':
+      case 'comment':
+      case 'mention':
+        if (item.postId) {
+          router.push(`/post/${item.postId}` as any);
+        }
+        break;
+      case 'follow':
+        if (item.actor?.username) {
+          router.push(`/user/${item.actor.username}` as any);
+        }
+        break;
+      case 'verification':
+      case 'system':
+        // No deep link for system notifications — just mark read
+        break;
+    }
+  }
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -171,27 +234,30 @@ export default function ActivityScreen() {
             />
           }
           renderItem={({ item }) => {
-            const accent = NOTIF_COLOR[item.type];
             const actor = item.actor;
+            // Determine if this notification can navigate somewhere
+            const isNavigable =
+              ((item.type === 'like' || item.type === 'comment' || item.type === 'mention') && !!item.postId) ||
+              (item.type === 'follow' && !!actor?.username);
+
             return (
               <Pressable
-                onPress={() => !item.read && markOneRead(item.id)}
-                style={[
+                onPress={() => handleNotifPress(item)}
+                style={({ pressed }) => [
                   styles.notifItem,
                   {
                     backgroundColor: item.read ? colors.background : colors.accent,
                     borderBottomColor: colors.border,
+                    opacity: pressed ? 0.75 : 1,
                   },
                 ]}
               >
                 {/* Avatar or icon */}
                 {actor ? (
-                  <View style={[styles.actorAvatar, { backgroundColor: avatarColor(actor.id) }]}>
-                    <Text style={styles.actorInitials}>{initials(actor.name || actor.username)}</Text>
-                  </View>
+                  <ActorAvatar actor={actor} type={item.type} />
                 ) : (
-                  <View style={[styles.iconCircle, { backgroundColor: accent + '18' }]}>
-                    <Feather name={NOTIF_ICON[item.type] as any} size={16} color={accent} />
+                  <View style={[styles.iconCircle, { backgroundColor: NOTIF_BADGE_COLOR[item.type] + '18' }]}>
+                    <Feather name={NOTIF_ICON[item.type] as any} size={18} color={NOTIF_BADGE_COLOR[item.type]} />
                   </View>
                 )}
 
@@ -214,10 +280,15 @@ export default function ActivityScreen() {
                   </Text>
                 </View>
 
-                {/* Unread dot */}
-                {!item.read && (
-                  <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
-                )}
+                {/* Right side: chevron for navigable items + unread dot */}
+                <View style={styles.rightCol}>
+                  {isNavigable && (
+                    <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+                  )}
+                  {!item.read && (
+                    <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
+                  )}
+                </View>
               </Pressable>
             );
           }}
@@ -275,28 +346,43 @@ const styles = StyleSheet.create({
   },
   notifItem: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 12,
     borderBottomWidth: 1,
   },
+  avatarWrap: {
+    width: 46,
+    height: 46,
+    position: 'relative',
+  },
   actorAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 46,
+    height: 46,
+    borderRadius: 23,
   },
   actorInitials: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: 'Inter_700Bold',
   },
+  typeBadge: {
+    position: 'absolute',
+    bottom: -1,
+    right: -1,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
   iconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -307,13 +393,16 @@ const styles = StyleSheet.create({
   notifTime: {
     fontSize: 12,
     fontFamily: 'Inter_400Regular',
-    marginTop: 4,
+    marginTop: 3,
+  },
+  rightCol: {
+    alignItems: 'center',
+    gap: 4,
   },
   unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    marginTop: 6,
   },
   empty: {
     alignItems: 'center',

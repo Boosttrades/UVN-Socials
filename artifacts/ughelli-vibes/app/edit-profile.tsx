@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +26,22 @@ function daysRemaining(profileUpdatedAt: string | null): number {
   nextAllowed.setDate(nextAllowed.getDate() + COOLDOWN_DAYS);
   const ms = nextAllowed.getTime() - Date.now();
   return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+}
+
+// Deterministic avatar background colour from user id
+const AVATAR_COLORS = [
+  '#0F8A5F', '#1D4ED8', '#7C3AED', '#DB2777',
+  '#DC2626', '#D97706', '#0891B2', '#059669',
+];
+function avatarBg(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) & 0xffffffff;
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
 export default function EditProfileScreen() {
@@ -106,122 +123,145 @@ export default function EditProfileScreen() {
           <View style={{ width: 36 }} />
         </View>
 
-        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: bottomPad }} keyboardShouldPersistTaps="handled">
-          {success ? (
-            <View style={styles.successWrap}>
-              <View style={[styles.successCircle, { backgroundColor: colors.accent }]}>
-                <Feather name="check" size={28} color={colors.primary} />
-              </View>
-              <Text style={[styles.successTitle, { color: colors.foreground }]}>Profile updated</Text>
-              <Text style={[styles.successBody, { color: colors.mutedForeground }]}>
-                You can change your name or username again in {COOLDOWN_DAYS} days.
-              </Text>
-              <Pressable
-                style={[styles.saveBtn, { backgroundColor: colors.primary }]}
-                onPress={() => router.back()}
-              >
-                <Text style={styles.saveBtnText}>Done</Text>
-              </Pressable>
-            </View>
-          ) : (
-            <>
-              {inCooldown ? (
-                <View style={[styles.cooldownBox, { backgroundColor: colors.accent, borderColor: colors.primary }]}>
-                  <Feather name="clock" size={16} color={colors.primary} />
-                  <Text style={[styles.cooldownText, { color: colors.foreground }]}>
-                    You recently changed your profile. You can change your name or username again in{' '}
-                    <Text style={{ fontFamily: 'Inter_600SemiBold' }}>
-                      {remaining} day{remaining === 1 ? '' : 's'}
-                    </Text>
-                    .
-                  </Text>
-                </View>
-              ) : (
-                <Text style={[styles.hint, { color: colors.mutedForeground }]}>
-                  Changing your name or username requires your password, and can only be done once every{' '}
-                  {COOLDOWN_DAYS} days.
-                </Text>
-              )}
+        <ScrollView contentContainerStyle={{ paddingBottom: bottomPad }} keyboardShouldPersistTaps="handled">
 
-              {error ? (
-                <View style={styles.errorBox}>
-                  <Text style={styles.errorText}>{error}</Text>
-                </View>
-              ) : null}
-
-              <View style={styles.field}>
-                <Text style={[styles.label, { color: colors.mutedForeground }]}>Name</Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground },
-                  ]}
-                  value={name}
-                  onChangeText={setName}
-                  placeholder="Your name"
-                  placeholderTextColor={colors.mutedForeground}
-                  editable={!inCooldown && !loading}
-                  autoCapitalize="words"
+          {/* ── Profile header ──────────────────────────────────────────── */}
+          {user && (
+            <View style={[styles.profileHeader, { borderBottomColor: colors.border }]}>
+              {user.profileImage ? (
+                <Image
+                  source={{ uri: user.profileImage }}
+                  style={styles.avatar}
+                  contentFit="cover"
+                  transition={200}
                 />
-              </View>
+              ) : (
+                <View style={[styles.avatar, { backgroundColor: avatarBg(user.id), alignItems: 'center', justifyContent: 'center' }]}>
+                  <Text style={styles.avatarInitials}>{initials(user.name || user.username)}</Text>
+                </View>
+              )}
+              <Text style={[styles.profileName, { color: colors.foreground }]}>{user.name}</Text>
+              <Text style={[styles.profileUsername, { color: colors.mutedForeground }]}>@{user.username}</Text>
+            </View>
+          )}
 
-              <View style={styles.field}>
-                <Text style={[styles.label, { color: colors.mutedForeground }]}>Username</Text>
-                <View
-                  style={[
-                    styles.usernameRow,
-                    { backgroundColor: colors.input, borderColor: colors.border },
-                  ]}
+          <View style={{ padding: 20 }}>
+            {success ? (
+              <View style={styles.successWrap}>
+                <View style={[styles.successCircle, { backgroundColor: colors.accent }]}>
+                  <Feather name="check" size={28} color={colors.primary} />
+                </View>
+                <Text style={[styles.successTitle, { color: colors.foreground }]}>Profile updated</Text>
+                <Text style={[styles.successBody, { color: colors.mutedForeground }]}>
+                  You can change your name or username again in {COOLDOWN_DAYS} days.
+                </Text>
+                <Pressable
+                  style={[styles.saveBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => router.back()}
                 >
-                  <Text style={[styles.usernamePrefix, { color: colors.mutedForeground }]}>@</Text>
+                  <Text style={styles.saveBtnText}>Done</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <>
+                {inCooldown ? (
+                  <View style={[styles.cooldownBox, { backgroundColor: colors.accent, borderColor: colors.primary }]}>
+                    <Feather name="clock" size={16} color={colors.primary} />
+                    <Text style={[styles.cooldownText, { color: colors.foreground }]}>
+                      You recently changed your profile. You can change your name or username again in{' '}
+                      <Text style={{ fontFamily: 'Inter_600SemiBold' }}>
+                        {remaining} day{remaining === 1 ? '' : 's'}
+                      </Text>
+                      .
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={[styles.hint, { color: colors.mutedForeground }]}>
+                    Changing your name or username requires your password, and can only be done once every{' '}
+                    {COOLDOWN_DAYS} days.
+                  </Text>
+                )}
+
+                {error ? (
+                  <View style={[styles.errorBox, { backgroundColor: colors.accent, borderColor: colors.border }]}>
+                    <Text style={[styles.errorText, { color: '#DC2626' }]}>{error}</Text>
+                  </View>
+                ) : null}
+
+                <View style={styles.field}>
+                  <Text style={[styles.label, { color: colors.mutedForeground }]}>Name</Text>
                   <TextInput
-                    style={[styles.usernameInput, { color: colors.foreground }]}
-                    value={username}
-                    onChangeText={(t) => setUsername(t.replace(/[^a-zA-Z0-9_]/g, ''))}
-                    placeholder="username"
+                    style={[
+                      styles.input,
+                      { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground },
+                    ]}
+                    value={name}
+                    onChangeText={setName}
+                    placeholder="Your name"
                     placeholderTextColor={colors.mutedForeground}
                     editable={!inCooldown && !loading}
-                    autoCapitalize="none"
-                    autoCorrect={false}
+                    autoCapitalize="words"
                   />
                 </View>
-              </View>
 
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                <View style={styles.field}>
+                  <Text style={[styles.label, { color: colors.mutedForeground }]}>Username</Text>
+                  <View
+                    style={[
+                      styles.usernameRow,
+                      { backgroundColor: colors.input, borderColor: colors.border },
+                    ]}
+                  >
+                    <Text style={[styles.usernamePrefix, { color: colors.mutedForeground }]}>@</Text>
+                    <TextInput
+                      style={[styles.usernameInput, { color: colors.foreground }]}
+                      value={username}
+                      onChangeText={(t) => setUsername(t.replace(/[^a-zA-Z0-9_]/g, ''))}
+                      placeholder="username"
+                      placeholderTextColor={colors.mutedForeground}
+                      editable={!inCooldown && !loading}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                  </View>
+                </View>
 
-              <View style={styles.field}>
-                <Text style={[styles.label, { color: colors.mutedForeground }]}>Confirm password</Text>
-                <TextInput
+                <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+                <View style={styles.field}>
+                  <Text style={[styles.label, { color: colors.mutedForeground }]}>Confirm password</Text>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground },
+                    ]}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="Your current password"
+                    placeholderTextColor={colors.mutedForeground}
+                    secureTextEntry
+                    editable={!inCooldown && !loading}
+                    textContentType="password"
+                  />
+                  <Text style={[styles.passwordHint, { color: colors.mutedForeground }]}>
+                    Required to confirm changes to your name or username.
+                  </Text>
+                </View>
+
+                <Pressable
                   style={[
-                    styles.input,
-                    { backgroundColor: colors.input, borderColor: colors.border, color: colors.foreground },
+                    styles.saveBtn,
+                    { backgroundColor: colors.primary },
+                    (inCooldown || loading) && styles.saveBtnDisabled,
                   ]}
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="Your current password"
-                  placeholderTextColor={colors.mutedForeground}
-                  secureTextEntry
-                  editable={!inCooldown && !loading}
-                  textContentType="password"
-                />
-                <Text style={[styles.passwordHint, { color: colors.mutedForeground }]}>
-                  Required to confirm changes to your name or username.
-                </Text>
-              </View>
-
-              <Pressable
-                style={[
-                  styles.saveBtn,
-                  { backgroundColor: colors.primary },
-                  (inCooldown || loading) && styles.saveBtnDisabled,
-                ]}
-                onPress={handleSave}
-                disabled={inCooldown || loading}
-              >
-                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
-              </Pressable>
-            </>
-          )}
+                  onPress={handleSave}
+                  disabled={inCooldown || loading}
+                >
+                  {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>Save Changes</Text>}
+                </Pressable>
+              </>
+            )}
+          </View>
         </ScrollView>
       </View>
     </KeyboardAvoidingView>
@@ -237,6 +277,31 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   navTitle: { fontSize: 17, fontFamily: 'Inter_700Bold' },
+  profileHeader: {
+    alignItems: 'center',
+    paddingVertical: 28,
+    borderBottomWidth: 1,
+    gap: 6,
+  },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    marginBottom: 4,
+  },
+  avatarInitials: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontFamily: 'Inter_700Bold',
+  },
+  profileName: {
+    fontSize: 18,
+    fontFamily: 'Inter_700Bold',
+  },
+  profileUsername: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+  },
   hint: { fontSize: 13, fontFamily: 'Inter_400Regular', lineHeight: 19, marginBottom: 20 },
   cooldownBox: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 10,
@@ -244,10 +309,10 @@ const styles = StyleSheet.create({
   },
   cooldownText: { flex: 1, fontSize: 13, fontFamily: 'Inter_400Regular', lineHeight: 19 },
   errorBox: {
-    backgroundColor: '#FEF2F2', borderRadius: 10, padding: 12, marginBottom: 16,
-    borderWidth: 1, borderColor: '#FECACA',
+    borderRadius: 10, padding: 12, marginBottom: 16,
+    borderWidth: 1,
   },
-  errorText: { color: '#DC2626', fontSize: 14, fontFamily: 'Inter_400Regular' },
+  errorText: { fontSize: 14, fontFamily: 'Inter_400Regular' },
   field: { marginBottom: 18 },
   label: { fontSize: 13, fontFamily: 'Inter_500Medium', marginBottom: 6 },
   input: {
