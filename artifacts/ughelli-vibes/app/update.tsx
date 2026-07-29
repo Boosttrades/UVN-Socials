@@ -10,15 +10,17 @@
  * All remote checking is delegated to UpdateContext (which fires on startup).
  * This screen owns only the download + install state machine.
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   type LayoutChangeEvent,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  ToastAndroid,
   View,
 } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -73,6 +75,16 @@ export default function UpdateScreen() {
   const isMandatory = updateInfo?.mandatory === true;
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomPad = Platform.OS === 'web' ? 40 : insets.bottom + 32;
+
+  // Block Android hardware/gesture back when the update is mandatory
+  useEffect(() => {
+    if (!isMandatory || Platform.OS !== 'android') return;
+    const handler = BackHandler.addEventListener('hardwareBackPress', () => {
+      ToastAndroid.show('Update required before continuing', ToastAndroid.SHORT);
+      return true; // returning true swallows the back press
+    });
+    return () => handler.remove();
+  }, [isMandatory]);
 
   // ── Download & Install ──────────────────────────────────────────────────────
 
