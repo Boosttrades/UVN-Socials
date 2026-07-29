@@ -10,13 +10,17 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { ApiError } from '@/utils/api';
+import { useColors } from '@/hooks/useColors';
+import { useTheme } from '@/contexts/ThemeContext';
 
 const PRIMARY = '#0F8A5F';
+const PRIMARY_DARK = '#066A46';
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
@@ -24,12 +28,22 @@ export default function ResetPasswordScreen() {
   const { resetPassword } = useAuth();
   const params = useLocalSearchParams<{ token?: string }>();
   const token = typeof params.token === 'string' ? params.token : '';
+  const colors = useColors();
+  const { resolvedScheme } = useTheme();
+  const isDark = resolvedScheme === 'dark';
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+
+  const cardBg      = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.60)';
+  const cardBorder  = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,138,95,0.20)';
+  const inputBg     = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.70)';
+  const inputBorder = isDark ? 'rgba(255,255,255,0.12)' : colors.border;
+  const accentText  = isDark ? '#22C58B' : PRIMARY;
+  const iconBg      = isDark ? 'rgba(15,138,95,0.20)' : '#E8F5F0';
 
   async function handleSubmit() {
     if (!token) {
@@ -62,141 +76,171 @@ export default function ResetPasswordScreen() {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView
-        contentContainerStyle={[
-          styles.container,
-          { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 32 },
-        ]}
-        keyboardShouldPersistTaps="handled"
-      >
-        {done ? (
-          <View style={styles.centerContent}>
-            <View style={styles.iconWrap}>
-              <Feather name="check-circle" size={40} color={PRIMARY} />
-            </View>
-            <Text style={styles.title}>Password reset</Text>
-            <Text style={styles.body}>Your password has been updated. Log in with your new password.</Text>
-            <Pressable style={styles.button} onPress={() => router.replace('/auth/login')}>
-              <Text style={styles.buttonText}>Back to Login</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <View style={styles.form}>
-            <Text style={styles.title}>Set a new password</Text>
-            <Text style={styles.body}>Choose a new password for your account.</Text>
-
-            {!token ? (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>
-                  This link is missing its reset token. Open the link from your email again, or request a new
-                  one.
+    <View style={styles.root}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.container,
+            { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 32 },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {done ? (
+            <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+              <View style={styles.centerContent}>
+                <View style={[styles.iconWrap, { backgroundColor: iconBg }]}>
+                  <Feather name="check-circle" size={40} color={accentText} />
+                </View>
+                <Text style={[styles.title, { color: colors.foreground }]}>Password reset</Text>
+                <Text style={[styles.body, { color: colors.mutedForeground }]}>
+                  Your password has been updated. Log in with your new password.
                 </Text>
+                <Pressable style={styles.button} onPress={() => router.replace('/auth/login')}>
+                  <LinearGradient
+                    colors={[PRIMARY, PRIMARY_DARK]}
+                    style={styles.buttonGradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                  >
+                    <Text style={styles.buttonText}>Back to Login</Text>
+                  </LinearGradient>
+                </Pressable>
               </View>
-            ) : null}
+            </View>
+          ) : (
+            <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+              <Text style={[styles.title, { color: colors.foreground }]}>Set a new password</Text>
+              <Text style={[styles.body, { color: colors.mutedForeground }]}>
+                Choose a new password for your account.
+              </Text>
 
-            {error ? (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>{error}</Text>
+              {!token ? (
+                <View style={[styles.errorBox, { backgroundColor: isDark ? 'rgba(248,113,113,0.12)' : '#FEF2F2', borderColor: isDark ? 'rgba(248,113,113,0.25)' : '#FECACA' }]}>
+                  <Text style={[styles.errorText, { color: colors.destructive }]}>
+                    This link is missing its reset token. Open the link from your email again, or request a new one.
+                  </Text>
+                </View>
+              ) : null}
+
+              {error ? (
+                <View style={[styles.errorBox, { backgroundColor: isDark ? 'rgba(248,113,113,0.12)' : '#FEF2F2', borderColor: isDark ? 'rgba(248,113,113,0.25)' : '#FECACA' }]}>
+                  <Text style={[styles.errorText, { color: colors.destructive }]}>{error}</Text>
+                </View>
+              ) : null}
+
+              <View style={styles.field}>
+                <Text style={[styles.label, { color: colors.mutedForeground }]}>New password</Text>
+                <View style={[styles.inputWrapper, { backgroundColor: inputBg, borderColor: inputBorder }]}>
+                  <TextInput
+                    style={[styles.input, { color: colors.foreground }]}
+                    placeholder="Min. 8 characters"
+                    placeholderTextColor={colors.mutedForeground}
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry
+                    textContentType="newPassword"
+                  />
+                </View>
               </View>
-            ) : null}
 
-            <View style={styles.field}>
-              <Text style={styles.label}>New password</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Min. 8 characters"
-                placeholderTextColor="#9CA3AF"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                textContentType="newPassword"
-              />
+              <View style={styles.field}>
+                <Text style={[styles.label, { color: colors.mutedForeground }]}>Confirm new password</Text>
+                <View style={[styles.inputWrapper, { backgroundColor: inputBg, borderColor: inputBorder }]}>
+                  <TextInput
+                    style={[styles.input, { color: colors.foreground }]}
+                    placeholder="Re-enter password"
+                    placeholderTextColor={colors.mutedForeground}
+                    value={confirmPassword}
+                    onChangeText={setConfirmPassword}
+                    secureTextEntry
+                    textContentType="newPassword"
+                  />
+                </View>
+              </View>
+
+              <Pressable
+                style={[styles.button, loading && styles.buttonDisabled]}
+                onPress={handleSubmit}
+                disabled={loading}
+              >
+                <LinearGradient
+                  colors={[PRIMARY, PRIMARY_DARK]}
+                  style={styles.buttonGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.buttonText}>Reset password</Text>
+                  )}
+                </LinearGradient>
+              </Pressable>
             </View>
-
-            <View style={styles.field}>
-              <Text style={styles.label}>Confirm new password</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Re-enter password"
-                placeholderTextColor="#9CA3AF"
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry
-                textContentType="newPassword"
-              />
-            </View>
-
-            <Pressable
-              style={[styles.button, loading && styles.buttonDisabled]}
-              onPress={handleSubmit}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.buttonText}>Reset password</Text>
-              )}
-            </Pressable>
-          </View>
-        )}
-      </ScrollView>
-    </KeyboardAvoidingView>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#fff' },
-  container: { flexGrow: 1, paddingHorizontal: 24 },
+  root: { flex: 1 },
+  flex: { flex: 1 },
+  container: { flexGrow: 1, paddingHorizontal: 24, justifyContent: 'center' },
 
-  form: { flex: 1, marginTop: 24 },
-  centerContent: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  card: {
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 24,
+  },
+  centerContent: { alignItems: 'center' },
 
   iconWrap: {
     width: 88,
     height: 88,
     borderRadius: 44,
-    backgroundColor: '#E8F5F0',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,
   },
 
-  title: { fontSize: 24, fontFamily: 'Inter_700Bold', color: '#1A1A2E', marginBottom: 12 },
-  body: { fontSize: 15, fontFamily: 'Inter_400Regular', color: '#6B7280', lineHeight: 22, marginBottom: 24, textAlign: 'left' },
+  title: { fontSize: 24, fontFamily: 'Inter_700Bold', marginBottom: 12 },
+  body: { fontSize: 15, fontFamily: 'Inter_400Regular', lineHeight: 22, marginBottom: 24 },
 
   errorBox: {
-    backgroundColor: '#FEF2F2',
     borderRadius: 10,
     padding: 12,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#FECACA',
   },
-  errorText: { color: '#DC2626', fontSize: 14, fontFamily: 'Inter_400Regular' },
+  errorText: { fontSize: 14, fontFamily: 'Inter_400Regular' },
 
   field: { marginBottom: 16 },
-  label: { fontSize: 14, fontFamily: 'Inter_500Medium', color: '#374151', marginBottom: 6 },
-  input: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: '#1A1A2E',
-    fontFamily: 'Inter_400Regular',
+  label: { fontSize: 13, fontFamily: 'Inter_500Medium', marginBottom: 8, letterSpacing: 0.2 },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    paddingHorizontal: 14,
+  },
+  input: {
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 15,
+    fontFamily: 'Inter_400Regular',
   },
 
-  button: {
-    backgroundColor: PRIMARY,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-    width: '100%',
-  },
+  button: { borderRadius: 14, overflow: 'hidden', marginTop: 8 },
   buttonDisabled: { opacity: 0.6 },
+  buttonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
   buttonText: { color: '#fff', fontSize: 16, fontFamily: 'Inter_600SemiBold' },
 });

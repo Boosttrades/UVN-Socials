@@ -10,20 +10,35 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '@/contexts/AuthContext';
 import { ApiError } from '@/utils/api';
+import { useColors } from '@/hooks/useColors';
+import { useTheme } from '@/contexts/ThemeContext';
+
+const PRIMARY = '#0F8A5F';
+const PRIMARY_DARK = '#066A46';
 
 export default function SignupScreen() {
   const router = useRouter();
   const { signup } = useAuth();
   const insets = useSafeAreaInsets();
+  const colors = useColors();
+  const { resolvedScheme } = useTheme();
+  const isDark = resolvedScheme === 'dark';
 
   const [form, setForm] = useState({ name: '', username: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const cardBg      = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.60)';
+  const cardBorder  = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(15,138,95,0.20)';
+  const inputBg     = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.70)';
+  const inputBorder = isDark ? 'rgba(255,255,255,0.12)' : colors.border;
+  const accentText  = isDark ? '#22C58B' : PRIMARY;
 
   function update(field: keyof typeof form) {
     return (value: string) => setForm((f) => ({ ...f, [field]: value }));
@@ -57,183 +72,207 @@ export default function SignupScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={[
-          styles.container,
-          { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 32 },
-        ]}
-        keyboardShouldPersistTaps="handled"
+    <View style={styles.root}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        {/* Back */}
-        <Pressable style={styles.back} onPress={() => router.back()}>
-          <Feather name="arrow-left" size={22} color="#1A1A2E" />
-        </Pressable>
-
-        {/* Header */}
-        <Text style={styles.title}>Create account</Text>
-        <Text style={styles.subtitle}>Join Ughelli Vibes — your local news network.</Text>
-
-        {/* Error */}
-        {error ? (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>{error}</Text>
-          </View>
-        ) : null}
-
-        {/* Fields */}
-        <View style={styles.field}>
-          <Text style={styles.label}>Full Name</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="John Okoro"
-            placeholderTextColor="#9CA3AF"
-            value={form.name}
-            onChangeText={update('name')}
-            autoCapitalize="words"
-            textContentType="name"
-          />
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Username</Text>
-          <View style={styles.usernameInputRow}>
-            <Text style={styles.usernamePrefix}>@</Text>
-            <TextInput
-              style={[styles.input, styles.usernameInput]}
-              placeholder="john_ughelli"
-              placeholderTextColor="#9CA3AF"
-              value={form.username}
-              onChangeText={(text) => update('username')(text.replace(/^@+/, ''))}
-              autoCapitalize="none"
-              autoCorrect={false}
-              textContentType="username"
-            />
-          </View>
-          <Text style={styles.hint}>Letters, numbers, and underscores only — must be unique</Text>
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Email</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="john@email.com"
-            placeholderTextColor="#9CA3AF"
-            value={form.email}
-            onChangeText={update('email')}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            textContentType="emailAddress"
-          />
-        </View>
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Min. 8 characters"
-            placeholderTextColor="#9CA3AF"
-            value={form.password}
-            onChangeText={update('password')}
-            secureTextEntry
-            textContentType="newPassword"
-          />
-        </View>
-
-        <Pressable
-          style={[styles.button, loading && styles.buttonDisabled]}
-          onPress={handleSignup}
-          disabled={loading}
+        <ScrollView
+          contentContainerStyle={[
+            styles.container,
+            { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 32 },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>Create Account</Text>
-          )}
-        </Pressable>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>Already have an account? </Text>
-          <Pressable onPress={() => router.back()}>
-            <Text style={styles.link}>Log in</Text>
+          {/* Back */}
+          <Pressable style={styles.back} onPress={() => router.back()}>
+            <Feather name="arrow-left" size={22} color={colors.foreground} />
           </Pressable>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+
+          {/* Header */}
+          <Text style={[styles.title, { color: colors.foreground }]}>Create account</Text>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
+            Join Ughelli Vibes — your local news network.
+          </Text>
+
+          {/* Error */}
+          {error ? (
+            <View style={[styles.errorBox, { backgroundColor: isDark ? 'rgba(248,113,113,0.12)' : '#FEF2F2', borderColor: isDark ? 'rgba(248,113,113,0.25)' : '#FECACA' }]}>
+              <Text style={[styles.errorText, { color: colors.destructive }]}>{error}</Text>
+            </View>
+          ) : null}
+
+          {/* Glass card */}
+          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+            <View style={styles.field}>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>Full Name</Text>
+              <View style={[styles.inputWrapper, { backgroundColor: inputBg, borderColor: inputBorder }]}>
+                <TextInput
+                  style={[styles.input, { color: colors.foreground }]}
+                  placeholder="John Okoro"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={form.name}
+                  onChangeText={update('name')}
+                  autoCapitalize="words"
+                  textContentType="name"
+                />
+              </View>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>Username</Text>
+              <View style={[styles.usernameInputRow, { backgroundColor: inputBg, borderColor: inputBorder }]}>
+                <Text style={[styles.usernamePrefix, { color: colors.mutedForeground }]}>@</Text>
+                <TextInput
+                  style={[styles.input, styles.usernameInput, { color: colors.foreground }]}
+                  placeholder="john_ughelli"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={form.username}
+                  onChangeText={(text) => update('username')(text.replace(/^@+/, ''))}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  textContentType="username"
+                />
+              </View>
+              <Text style={[styles.hint, { color: colors.mutedForeground }]}>
+                Letters, numbers, and underscores only — must be unique
+              </Text>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>Email</Text>
+              <View style={[styles.inputWrapper, { backgroundColor: inputBg, borderColor: inputBorder }]}>
+                <TextInput
+                  style={[styles.input, { color: colors.foreground }]}
+                  placeholder="john@email.com"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={form.email}
+                  onChangeText={update('email')}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  textContentType="emailAddress"
+                />
+              </View>
+            </View>
+
+            <View style={styles.field}>
+              <Text style={[styles.label, { color: colors.mutedForeground }]}>Password</Text>
+              <View style={[styles.inputWrapper, { backgroundColor: inputBg, borderColor: inputBorder }]}>
+                <TextInput
+                  style={[styles.input, { color: colors.foreground }]}
+                  placeholder="Min. 8 characters"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={form.password}
+                  onChangeText={update('password')}
+                  secureTextEntry
+                  textContentType="newPassword"
+                />
+              </View>
+            </View>
+
+            <Pressable
+              style={[styles.button, loading && styles.buttonDisabled]}
+              onPress={handleSignup}
+              disabled={loading}
+            >
+              <LinearGradient
+                colors={[PRIMARY, PRIMARY_DARK]}
+                style={styles.buttonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Text style={styles.buttonText}>Create Account</Text>
+                    <Feather name="arrow-right" size={16} color="#fff" />
+                  </>
+                )}
+              </LinearGradient>
+            </Pressable>
+          </View>
+
+          {/* Footer */}
+          <View style={styles.footer}>
+            <Text style={[styles.footerText, { color: colors.mutedForeground }]}>Already have an account? </Text>
+            <Pressable onPress={() => router.back()}>
+              <Text style={[styles.link, { color: accentText }]}>Log in</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
-const PRIMARY = '#0F8A5F';
-
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: '#fff' },
+  root: { flex: 1 },
+  flex: { flex: 1 },
   container: { flexGrow: 1, paddingHorizontal: 24 },
   back: { marginBottom: 24, width: 40, height: 40, justifyContent: 'center' },
-  title: { fontSize: 28, fontFamily: 'Inter_700Bold', color: '#1A1A2E', marginBottom: 8 },
-  subtitle: { fontSize: 15, color: '#6B7280', fontFamily: 'Inter_400Regular', marginBottom: 28 },
+  title: { fontSize: 28, fontFamily: 'Inter_700Bold', marginBottom: 8 },
+  subtitle: { fontSize: 15, fontFamily: 'Inter_400Regular', marginBottom: 24 },
 
   errorBox: {
-    backgroundColor: '#FEF2F2',
     borderRadius: 10,
     padding: 12,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#FECACA',
   },
-  errorText: { color: '#DC2626', fontSize: 14, fontFamily: 'Inter_400Regular' },
+  errorText: { fontSize: 14, fontFamily: 'Inter_400Regular' },
 
-  field: { marginBottom: 16 },
-  label: { fontSize: 14, fontFamily: 'Inter_500Medium', color: '#374151', marginBottom: 6 },
-  input: {
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: '#1A1A2E',
-    fontFamily: 'Inter_400Regular',
+  card: {
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    padding: 20,
+    marginBottom: 24,
   },
-  hint: { fontSize: 12, color: '#9CA3AF', marginTop: 4, fontFamily: 'Inter_400Regular' },
+  field: { marginBottom: 16 },
+  label: { fontSize: 13, fontFamily: 'Inter_500Medium', marginBottom: 8, letterSpacing: 0.2 },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+  },
+  input: {
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 15,
+    fontFamily: 'Inter_400Regular',
+  },
+  hint: { fontSize: 12, marginTop: 4, fontFamily: 'Inter_400Regular' },
   usernameInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    paddingLeft: 16,
+    paddingLeft: 14,
   },
-  usernamePrefix: { fontSize: 16, color: '#6B7280', fontFamily: 'Inter_500Medium' },
-  usernameInput: {
-    flex: 1,
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-    paddingLeft: 4,
-  },
+  usernamePrefix: { fontSize: 16, fontFamily: 'Inter_500Medium' },
+  usernameInput: { paddingLeft: 4 },
 
-  button: {
-    backgroundColor: PRIMARY,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 8,
-  },
+  button: { borderRadius: 14, overflow: 'hidden', marginTop: 4 },
   buttonDisabled: { opacity: 0.6 },
+  buttonGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
   buttonText: { color: '#fff', fontSize: 16, fontFamily: 'Inter_600SemiBold' },
 
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 28,
+    marginTop: 4,
     flexWrap: 'wrap',
   },
-  footerText: { fontSize: 14, color: '#6B7280', fontFamily: 'Inter_400Regular' },
-  link: { fontSize: 14, color: PRIMARY, fontFamily: 'Inter_600SemiBold' },
+  footerText: { fontSize: 14, fontFamily: 'Inter_400Regular' },
+  link: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },
 });
