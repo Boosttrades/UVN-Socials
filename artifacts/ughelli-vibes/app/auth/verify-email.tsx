@@ -26,7 +26,7 @@ export default function VerifyEmailScreen() {
     <View
       style={[
         styles.container,
-        { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 32 },
+        { paddingTop: insets.top + 40, paddingBottom: insets.bottom + 32, backgroundColor: colors.background },
       ]}
     >
       <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>

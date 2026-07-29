@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Dimensions, StyleSheet, useColorScheme, View } from 'react-native';
+import { useColorScheme } from 'react-native';
 import { onlineManager, QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
@@ -21,36 +21,7 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { NotificationsProvider } from '@/contexts/NotificationsContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
 import { UpdateProvider, useUpdate } from '@/contexts/UpdateContext';
-import NetworkBackground from '@/components/NetworkBackground';
-import { useTheme } from '@/contexts/ThemeContext';
-
-const { width: SW, height: SH } = Dimensions.get('window');
-
-/** Persistent full-screen neural-network background.
- *  Adapts base colour and network tint to the active colour scheme. */
-function AppBackground() {
-  const { resolvedScheme } = useTheme();
-  const isDark = resolvedScheme === 'dark';
-
-  const baseBg     = isDark ? '#061A12' : '#D6EFDF';   // light: richer mint so it's visible
-  const netColor   = isDark ? '#22C58B' : '#0F8A5F';
-  const netOpacity = isDark ? 0.30 : 0.28;             // light: was 0.20 — needed more punch
-
-  return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {/* Solid base so neither mode shows raw white or black */}
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: baseBg }]} />
-      <NetworkBackground
-        color={netColor}
-        opacity={netOpacity}
-        nodeCount={32}
-        maxDistance={155}
-        width={SW}
-        height={SH}
-      />
-    </View>
-  );
-}
+import { useColors } from '@/hooks/useColors';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -127,19 +98,16 @@ function MandatoryUpdateGate() {
 }
 
 function RootLayoutNav() {
+  const colors = useColors();
+
   return (
     <>
       <AuthGate />
-      {/* Redirects to /update and blocks navigation when a mandatory update exists */}
       <MandatoryUpdateGate />
-      {/*
-        contentStyle backgroundColor must be transparent on every screen so the
-        persistent AppBackground (network grid) shows through from behind.
-      */}
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: 'transparent' },
+          contentStyle: { backgroundColor: colors.background },
         }}
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -180,8 +148,6 @@ export default function RootLayout() {
               persistOptions={{ persister: asyncStoragePersister, maxAge: 1000 * 60 * 60 * 24 }}
             >
               <GestureHandlerRootView style={{ flex: 1 }}>
-                {/* Global neural-network background — visible on every screen */}
-                <AppBackground />
                 <AuthProvider>
                   <NotificationsProvider>
                     <RootLayoutNav />

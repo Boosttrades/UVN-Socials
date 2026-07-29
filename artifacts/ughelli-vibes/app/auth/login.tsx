@@ -88,7 +88,7 @@ export default function LoginScreen() {
   }
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
       {/* Subtle radial glow behind the card — adapts to mode */}
       <View
         style={[

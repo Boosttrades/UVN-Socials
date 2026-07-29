@@ -185,7 +185,7 @@ export default function ForYouScreen() {
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.feedPadding}
-          style={{ backgroundColor: 'transparent' }}
+          style={{ backgroundColor: colors.background }}
         >
           <SkeletonFeedList />
         </ScrollView>
@@ -196,7 +196,7 @@ export default function ForYouScreen() {
           renderItem={({ item }) => <FeedCard post={item} />}
           contentContainerStyle={[styles.feedPadding, { paddingBottom: bottomPad }]}
           showsVerticalScrollIndicator={false}
-          style={{ backgroundColor: 'transparent' }}
+          style={{ backgroundColor: colors.background }}
           onEndReached={handleEndReached}
           onEndReachedThreshold={0.4}
           initialNumToRender={8}
