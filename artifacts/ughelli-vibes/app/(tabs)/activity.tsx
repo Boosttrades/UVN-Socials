@@ -99,7 +99,7 @@ export default function ActivityScreen() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: 'transparent' }]}>
       {/* Header */}
       <View
         style={[

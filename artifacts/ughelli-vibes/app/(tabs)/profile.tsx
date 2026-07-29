@@ -310,7 +310,7 @@ export default function ProfileScreen() {
 
   return (
     <FlatList
-      style={styles.root}
+      style={[styles.root, { backgroundColor: 'transparent' }]}
       data={listData}
       keyExtractor={(item) => item.id}
       renderItem={({ item }) => <FeedCard post={item} />}

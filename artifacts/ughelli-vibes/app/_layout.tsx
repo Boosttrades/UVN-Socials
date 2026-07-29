@@ -32,9 +32,9 @@ function AppBackground() {
   const { resolvedScheme } = useTheme();
   const isDark = resolvedScheme === 'dark';
 
-  const baseBg    = isDark ? '#061A12' : '#EAF5EE';
-  const netColor  = isDark ? '#22C58B' : '#0F8A5F';
-  const netOpacity = isDark ? 0.30 : 0.20;
+  const baseBg     = isDark ? '#061A12' : '#D6EFDF';   // light: richer mint so it's visible
+  const netColor   = isDark ? '#22C58B' : '#0F8A5F';
+  const netOpacity = isDark ? 0.30 : 0.28;             // light: was 0.20 — needed more punch
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
