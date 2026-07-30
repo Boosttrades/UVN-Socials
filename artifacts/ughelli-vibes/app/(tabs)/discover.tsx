@@ -50,7 +50,7 @@ export default function DiscoverScreen() {
 
   return (
     <ScrollView
-      style={[styles.root, { backgroundColor: 'transparent' }]}
+      style={[styles.root, { backgroundColor: colors.background }]}
       contentContainerStyle={{ paddingTop: topInset + 16, paddingBottom: bottomPad }}
       showsVerticalScrollIndicator={false}
     >

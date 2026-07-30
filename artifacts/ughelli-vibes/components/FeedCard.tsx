@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  useColorScheme,
   View,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -16,6 +15,7 @@ import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useColors } from '@/hooks/useColors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { CATEGORY_COLORS, type FeedPost } from '@/constants/mockData';
 import { commentsQueryKey, useBookmarkPost, useLikePost, useSharePost } from '@/hooks/usePosts';
@@ -36,8 +36,8 @@ function formatCount(n: number): string {
 
 export default function FeedCard({ post, onPress }: FeedCardProps) {
   const colors = useColors();
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
+  const { resolvedScheme } = useTheme();
+  const isDark = resolvedScheme === 'dark';
   const router = useRouter();
   const { token } = useAuth();
   const queryClient = useQueryClient();
@@ -87,21 +87,12 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
     } catch {}
   }
 
-  // ── Glass card colours ───────────────────────────────────────────────────────
-  // Keep cards semi-transparent so the network animation shows through.
-  // ~52% opacity lets nodes and edges bleed through while text stays readable.
-  const cardBg = isEmergency
-    ? 'rgba(40,10,8,0.56)'
-    : 'rgba(6,22,14,0.54)';
-
-  // Glowing green border echoes the network node colour
-  const cardBorder = isEmergency
-    ? 'rgba(248,113,113,0.50)'
-    : 'rgba(34,197,139,0.32)';
-
-  const divider = 'rgba(34,197,139,0.12)';
-  const foreground = '#EDF2F0';
-  const mutedFg = 'rgba(255,255,255,0.50)';
+  // ── Card colours ─────────────────────────────────────────────────────────────
+  const cardBg = isEmergency ? colors.emergencyBg : colors.card;
+  const cardBorder = isEmergency ? colors.emergency : colors.primary;
+  const divider = colors.border;
+  const foreground = colors.foreground;
+  const mutedFg = colors.mutedForeground;
 
   return (
     <TouchableOpacity

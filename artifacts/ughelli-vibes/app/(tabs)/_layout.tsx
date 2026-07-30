@@ -25,9 +25,9 @@ export default function TabLayout() {
      * Transparent root — the global AppBackground from _layout.tsx shows through.
      * Every tab screen should also use a transparent root so the network is visible.
      */
-    <View style={styles.root}>
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
       <Tabs
-        sceneContainerStyle={{ backgroundColor: 'transparent' }}
+        sceneContainerStyle={{ backgroundColor: colors.background }}
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: colors.primary,

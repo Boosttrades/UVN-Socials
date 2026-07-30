@@ -18,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useColors } from '@/hooks/useColors';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { ALL_CATEGORIES, type PostCategory } from '@/constants/mockData';
 import { useCreatePost, useSearchUsers } from '@/hooks/usePosts';
@@ -43,6 +44,8 @@ const POST_TYPES: PostType[] = [
 
 export default function CreateScreen() {
   const colors = useColors();
+  const { resolvedScheme } = useTheme();
+  const isDark = resolvedScheme === 'dark';
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { token } = useAuth();
@@ -247,7 +250,7 @@ export default function CreateScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.root, { backgroundColor: 'transparent' }]}
+      style={[styles.root, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
@@ -276,7 +279,7 @@ export default function CreateScreen() {
                 {POST_TYPES.map((t) => (
                   <TouchableOpacity
                     key={t.id}
-                    style={[styles.typeCard, { backgroundColor: t.bg, borderColor: t.color + '30' }]}
+                    style={[styles.typeCard, { backgroundColor: isDark ? colors.card : t.bg, borderColor: t.color + (isDark ? '50' : '30') }]}
                     onPress={() => selectType(t)}
                   >
                     <View style={[styles.typeIcon, { backgroundColor: t.color }]}>
