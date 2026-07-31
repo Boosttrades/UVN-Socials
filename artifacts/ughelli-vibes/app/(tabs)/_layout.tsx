@@ -60,6 +60,10 @@ export default function TabLayout() {
     ? 'rgba(34,197,139,0.30)'
     : 'rgba(15,138,95,0.25)';
 
+  // Icon color: white when active (sits on filled green circle), green when inactive
+  const activeIconColor = '#FFFFFF';
+  const inactiveIconColor = colors.primary;
+
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <Tabs
@@ -84,6 +88,11 @@ export default function TabLayout() {
               style={[StyleSheet.absoluteFill, { backgroundColor: tabBarBg }]}
             />
           ),
+          tabBarLabelStyle: {
+            fontSize: 10,
+            fontWeight: '500',
+            marginTop: 2,
+          },
         }}
       >
         <Tabs.Screen
@@ -97,9 +106,9 @@ export default function TabLayout() {
                 borderColor={inactiveBorder}
               >
                 {isIOS ? (
-                  <SymbolView name="house" tintColor={focused ? '#fff' : color} size={22} />
+                  <SymbolView name="house" tintColor={focused ? activeIconColor : color} size={22} />
                 ) : (
-                  <Feather name="home" size={20} color={focused ? '#fff' : color} />
+                  <Feather name="home" size={20} color={focused ? activeIconColor : inactiveIconColor} />
                 )}
               </CircleTabIcon>
             ),
@@ -116,9 +125,9 @@ export default function TabLayout() {
                 borderColor={inactiveBorder}
               >
                 {isIOS ? (
-                  <SymbolView name="magnifyingglass" tintColor={focused ? '#fff' : color} size={22} />
+                  <SymbolView name="magnifyingglass" tintColor={focused ? activeIconColor : color} size={22} />
                 ) : (
-                  <Feather name="search" size={20} color={focused ? '#fff' : color} />
+                  <Feather name="search" size={20} color={focused ? activeIconColor : inactiveIconColor} />
                 )}
               </CircleTabIcon>
             ),
@@ -135,9 +144,9 @@ export default function TabLayout() {
                 borderColor={inactiveBorder}
               >
                 {isIOS ? (
-                  <SymbolView name="plus.circle" tintColor={focused ? '#fff' : color} size={22} />
+                  <SymbolView name="plus.circle" tintColor={focused ? activeIconColor : color} size={22} />
                 ) : (
-                  <Feather name="plus" size={20} color={focused ? '#fff' : color} />
+                  <Feather name="plus" size={20} color={focused ? activeIconColor : inactiveIconColor} />
                 )}
               </CircleTabIcon>
             ),
@@ -156,9 +165,9 @@ export default function TabLayout() {
                 borderColor={inactiveBorder}
               >
                 {isIOS ? (
-                  <SymbolView name="bell" tintColor={focused ? '#fff' : color} size={22} />
+                  <SymbolView name="bell" tintColor={focused ? activeIconColor : color} size={22} />
                 ) : (
-                  <Feather name="bell" size={20} color={focused ? '#fff' : color} />
+                  <Feather name="bell" size={20} color={focused ? activeIconColor : inactiveIconColor} />
                 )}
               </CircleTabIcon>
             ),
@@ -175,9 +184,9 @@ export default function TabLayout() {
                 borderColor={inactiveBorder}
               >
                 {isIOS ? (
-                  <SymbolView name="person" tintColor={focused ? '#fff' : color} size={22} />
+                  <SymbolView name="person" tintColor={focused ? activeIconColor : color} size={22} />
                 ) : (
-                  <Feather name="user" size={20} color={focused ? '#fff' : color} />
+                  <Feather name="user" size={20} color={focused ? activeIconColor : inactiveIconColor} />
                 )}
               </CircleTabIcon>
             ),
