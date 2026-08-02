@@ -104,8 +104,7 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
         {
           backgroundColor: cardBg,
           borderColor: cardBorder,
-          borderLeftWidth: isEmergency ? 4 : 1,
-          borderLeftColor: isEmergency ? (isDark ? '#F87171' : '#DC2626') : cardBorder,
+          borderWidth: isEmergency ? 2 : 1.5,
         },
       ]}
     >

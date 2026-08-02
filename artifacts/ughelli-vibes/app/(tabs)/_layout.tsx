@@ -8,6 +8,43 @@ import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
+// Reusable circular tab icon wrapper
+function CircleTabIcon({
+  focused,
+  primaryColor,
+  borderColor,
+  children,
+}: {
+  focused: boolean;
+  primaryColor: string;
+  borderColor: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View
+      style={[
+        circleStyles.circle,
+        focused
+          ? { backgroundColor: primaryColor, borderColor: primaryColor }
+          : { backgroundColor: 'transparent', borderColor },
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+const circleStyles = StyleSheet.create({
+  circle: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
+
 export default function TabLayout() {
   const colors = useColors();
   const { resolvedScheme } = useTheme();
@@ -15,38 +52,36 @@ export default function TabLayout() {
   const { unreadCount } = useNotifications();
   const isIOS = Platform.OS === 'ios';
 
-  // Tab-bar glass tint adapts to mode
   const tabBarBg = isDark ? 'rgba(4,14,9,0.80)' : 'rgba(240,250,244,0.88)';
   const tabBarBorder = isDark ? 'rgba(34,197,139,0.18)' : 'rgba(15,138,95,0.20)';
   const blurTint = isDark ? 'dark' : 'light';
+  // Inactive circle border: subtle green ring
+  const inactiveBorder = isDark
+    ? 'rgba(34,197,139,0.30)'
+    : 'rgba(15,138,95,0.25)';
 
   return (
-    /**
-     * Transparent root — the global AppBackground from _layout.tsx shows through.
-     * Every tab screen should also use a transparent root so the network is visible.
-     */
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <Tabs
         sceneContainerStyle={{ backgroundColor: colors.background }}
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: colors.primary,
-          tabBarInactiveTintColor: isDark ? 'rgba(255,255,255,0.38)' : 'rgba(0,0,0,0.38)',
+          tabBarActiveTintColor: '#ffffff',
+          tabBarInactiveTintColor: isDark ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.40)',
           tabBarStyle: {
             position: 'absolute',
             backgroundColor: 'transparent',
             borderTopWidth: 1,
             borderTopColor: tabBarBorder,
             elevation: 0,
+            height: 72,
+            paddingBottom: 10,
           },
           tabBarBackground: () => (
             <BlurView
               intensity={isIOS ? 90 : 60}
               tint={blurTint}
-              style={[
-                StyleSheet.absoluteFill,
-                { backgroundColor: tabBarBg },
-              ]}
+              style={[StyleSheet.absoluteFill, { backgroundColor: tabBarBg }]}
             />
           ),
         }}
@@ -55,36 +90,57 @@ export default function TabLayout() {
           name="index"
           options={{
             title: 'For You',
-            tabBarIcon: ({ color }) =>
-              isIOS ? (
-                <SymbolView name="house" tintColor={color} size={24} />
-              ) : (
-                <Feather name="home" size={22} color={color} />
-              ),
+            tabBarIcon: ({ color, focused }) => (
+              <CircleTabIcon
+                focused={focused}
+                primaryColor={colors.primary}
+                borderColor={inactiveBorder}
+              >
+                {isIOS ? (
+                  <SymbolView name="house" tintColor={focused ? '#fff' : color} size={22} />
+                ) : (
+                  <Feather name="home" size={20} color={focused ? '#fff' : color} />
+                )}
+              </CircleTabIcon>
+            ),
           }}
         />
         <Tabs.Screen
           name="discover"
           options={{
             title: 'Discover',
-            tabBarIcon: ({ color }) =>
-              isIOS ? (
-                <SymbolView name="magnifyingglass" tintColor={color} size={24} />
-              ) : (
-                <Feather name="search" size={22} color={color} />
-              ),
+            tabBarIcon: ({ color, focused }) => (
+              <CircleTabIcon
+                focused={focused}
+                primaryColor={colors.primary}
+                borderColor={inactiveBorder}
+              >
+                {isIOS ? (
+                  <SymbolView name="magnifyingglass" tintColor={focused ? '#fff' : color} size={22} />
+                ) : (
+                  <Feather name="search" size={20} color={focused ? '#fff' : color} />
+                )}
+              </CircleTabIcon>
+            ),
           }}
         />
         <Tabs.Screen
           name="create"
           options={{
             title: 'Create',
-            tabBarIcon: ({ color }) =>
-              isIOS ? (
-                <SymbolView name="plus.circle" tintColor={color} size={24} />
-              ) : (
-                <Feather name="plus-circle" size={22} color={color} />
-              ),
+            tabBarIcon: ({ color, focused }) => (
+              <CircleTabIcon
+                focused={focused}
+                primaryColor={colors.primary}
+                borderColor={inactiveBorder}
+              >
+                {isIOS ? (
+                  <SymbolView name="plus.circle" tintColor={focused ? '#fff' : color} size={22} />
+                ) : (
+                  <Feather name="plus" size={20} color={focused ? '#fff' : color} />
+                )}
+              </CircleTabIcon>
+            ),
           }}
         />
         <Tabs.Screen
@@ -93,24 +149,38 @@ export default function TabLayout() {
             title: 'Activity',
             tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
             tabBarBadgeStyle: { backgroundColor: '#22C58B', fontSize: 10 },
-            tabBarIcon: ({ color }) =>
-              isIOS ? (
-                <SymbolView name="bell" tintColor={color} size={24} />
-              ) : (
-                <Feather name="bell" size={22} color={color} />
-              ),
+            tabBarIcon: ({ color, focused }) => (
+              <CircleTabIcon
+                focused={focused}
+                primaryColor={colors.primary}
+                borderColor={inactiveBorder}
+              >
+                {isIOS ? (
+                  <SymbolView name="bell" tintColor={focused ? '#fff' : color} size={22} />
+                ) : (
+                  <Feather name="bell" size={20} color={focused ? '#fff' : color} />
+                )}
+              </CircleTabIcon>
+            ),
           }}
         />
         <Tabs.Screen
           name="profile"
           options={{
             title: 'Profile',
-            tabBarIcon: ({ color }) =>
-              isIOS ? (
-                <SymbolView name="person" tintColor={color} size={24} />
-              ) : (
-                <Feather name="user" size={22} color={color} />
-              ),
+            tabBarIcon: ({ color, focused }) => (
+              <CircleTabIcon
+                focused={focused}
+                primaryColor={colors.primary}
+                borderColor={inactiveBorder}
+              >
+                {isIOS ? (
+                  <SymbolView name="person" tintColor={focused ? '#fff' : color} size={22} />
+                ) : (
+                  <Feather name="user" size={20} color={focused ? '#fff' : color} />
+                )}
+              </CircleTabIcon>
+            ),
           }}
         />
       </Tabs>
