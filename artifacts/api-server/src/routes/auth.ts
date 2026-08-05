@@ -43,7 +43,9 @@ function getWebAppBaseUrl(): string {
 }
 
 const PROFILE_EDIT_COOLDOWN_DAYS = 14;
-const WRONG_CREDENTIALS_MSG = "Wrong email/username or password";
+const WRONG_PASSWORD_MSG = "Incorrect password";
+const USERNAME_NOT_FOUND_MSG = "Username not found";
+const EMAIL_NOT_FOUND_MSG = "Email does not exist";
 
 // ─── POST /api/auth/signup ───────────────────────────────────────────────────
 
@@ -137,6 +139,7 @@ router.post("/login", async (req, res) => {
   // Resolve username → email (Supabase signIn only accepts email)
   let email = identifier;
   if (!identifier.includes("@")) {
+    // It's a username — look it up
     const { data: profile } = await supabaseAdmin
       .from("Profiles")
       .select("email")
@@ -144,10 +147,22 @@ router.post("/login", async (req, res) => {
       .maybeSingle();
 
     if (!profile) {
-      res.status(401).json({ error: WRONG_CREDENTIALS_MSG });
+      res.status(401).json({ error: USERNAME_NOT_FOUND_MSG });
       return;
     }
     email = profile.email;
+  } else {
+    // It's an email — check it exists before attempting sign-in
+    const { data: profile } = await supabaseAdmin
+      .from("Profiles")
+      .select("Id")
+      .eq("email", identifier)
+      .maybeSingle();
+
+    if (!profile) {
+      res.status(401).json({ error: EMAIL_NOT_FOUND_MSG });
+      return;
+    }
   }
 
   // Authenticate via Supabase (stateless REST call)
@@ -155,7 +170,7 @@ router.post("/login", async (req, res) => {
   try {
     session = await signInWithPassword(email, password);
   } catch {
-    res.status(401).json({ error: WRONG_CREDENTIALS_MSG });
+    res.status(401).json({ error: WRONG_PASSWORD_MSG });
     return;
   }
 
