@@ -9,7 +9,8 @@ const router: IRouter = Router();
 
 router.get("/search", optionalAuth, async (req, res) => {
   const currentUser = (req as any).currentUser as { id: string } | undefined;
-  const q = String(req.query.q ?? "").trim();
+  // Strip leading @ so that "@chidinma" and "chidinma" both match
+  const q = String(req.query.q ?? "").trim().replace(/^@+/, "");
 
   if (!q) {
     res.json({ users: [] });

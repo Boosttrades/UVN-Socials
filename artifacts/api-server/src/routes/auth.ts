@@ -129,6 +129,11 @@ router.post("/login", async (req, res) => {
   let { identifier, password } = parsed.data;
   identifier = identifier.trim().toLowerCase();
 
+  // Strip a leading @ so that "@chidinma" is treated the same as "chidinma"
+  if (identifier.startsWith("@")) {
+    identifier = identifier.slice(1);
+  }
+
   // Resolve username → email (Supabase signIn only accepts email)
   let email = identifier;
   if (!identifier.includes("@")) {
