@@ -262,6 +262,7 @@ export interface ApiComment {
     id: string;
     name: string;
     username: string;
+    profileImage: string | null;
   };
 }
 
@@ -282,6 +283,7 @@ export function apiCommentToComment(comment: ApiComment): Comment {
       isOrg: false,
       initials: getInitials(comment.author.name),
       avatarColor: colorForId(comment.author.id),
+      profileImage: comment.author.profileImage ?? null,
     },
     body: comment.body,
     timeAgo: timeAgo(comment.createdAt),
@@ -374,6 +376,41 @@ export function useFollowUser(username: string | undefined) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['userProfile', username] });
+      queryClient.invalidateQueries({ queryKey: ['followers', username] });
+      queryClient.invalidateQueries({ queryKey: ['following', username] });
     },
+  });
+}
+
+// ─── Followers / Following lists ─────────────────────────────────────────────
+
+export interface ApiFollowUser {
+  id: string;
+  name: string;
+  username: string;
+  profileImage: string | null;
+  isFollowing: boolean;
+  isMe: boolean;
+}
+
+export function useFollowersList(username: string | undefined) {
+  const { token } = useAuth();
+  return useQuery({
+    queryKey: ['followers', username],
+    queryFn: () =>
+      apiRequest<{ users: ApiFollowUser[] }>(`/users/${username}/followers`, { token }),
+    select: (data) => data.users,
+    enabled: !!username,
+  });
+}
+
+export function useFollowingList(username: string | undefined) {
+  const { token } = useAuth();
+  return useQuery({
+    queryKey: ['following', username],
+    queryFn: () =>
+      apiRequest<{ users: ApiFollowUser[] }>(`/users/${username}/following`, { token }),
+    select: (data) => data.users,
+    enabled: !!username,
   });
 }

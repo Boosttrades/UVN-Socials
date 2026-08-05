@@ -52,6 +52,106 @@ router.get("/search", optionalAuth, async (req, res) => {
   });
 });
 
+// ─── GET /api/users/:username/followers ──────────────────────────────────────
+
+router.get("/:username/followers", optionalAuth, async (req, res) => {
+  const currentUser = (req as any).currentUser as { id: string } | undefined;
+  const username = String(req.params.username);
+
+  const { data: target } = await supabaseAdmin
+    .from("Profiles")
+    .select("Id")
+    .eq("username", username)
+    .maybeSingle();
+
+  if (!target) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const { data: rows } = await supabaseAdmin
+    .from("Follows")
+    .select("follower:Profiles!follower_id(Id, name, username, profile_image)")
+    .eq("following_id", target.Id)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  const followerIds = (rows ?? []).map((r: any) => r.follower?.Id).filter(Boolean);
+
+  let followingSet = new Set<string>();
+  if (currentUser && followerIds.length > 0) {
+    const { data: myFollows } = await supabaseAdmin
+      .from("Follows")
+      .select("following_id")
+      .eq("follower_id", currentUser.id)
+      .in("following_id", followerIds);
+    followingSet = new Set((myFollows ?? []).map((f: any) => f.following_id));
+  }
+
+  res.json({
+    users: (rows ?? [])
+      .filter((r: any) => r.follower)
+      .map((r: any) => ({
+        id: r.follower.Id,
+        name: r.follower.name ?? "",
+        username: r.follower.username ?? "",
+        profileImage: r.follower.profile_image ?? null,
+        isFollowing: followingSet.has(r.follower.Id),
+        isMe: currentUser?.id === r.follower.Id,
+      })),
+  });
+});
+
+// ─── GET /api/users/:username/following ──────────────────────────────────────
+
+router.get("/:username/following", optionalAuth, async (req, res) => {
+  const currentUser = (req as any).currentUser as { id: string } | undefined;
+  const username = String(req.params.username);
+
+  const { data: target } = await supabaseAdmin
+    .from("Profiles")
+    .select("Id")
+    .eq("username", username)
+    .maybeSingle();
+
+  if (!target) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const { data: rows } = await supabaseAdmin
+    .from("Follows")
+    .select("following:Profiles!following_id(Id, name, username, profile_image)")
+    .eq("follower_id", target.Id)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  const followingIds = (rows ?? []).map((r: any) => r.following?.Id).filter(Boolean);
+
+  let followingSet = new Set<string>();
+  if (currentUser && followingIds.length > 0) {
+    const { data: myFollows } = await supabaseAdmin
+      .from("Follows")
+      .select("following_id")
+      .eq("follower_id", currentUser.id)
+      .in("following_id", followingIds);
+    followingSet = new Set((myFollows ?? []).map((f: any) => f.following_id));
+  }
+
+  res.json({
+    users: (rows ?? [])
+      .filter((r: any) => r.following)
+      .map((r: any) => ({
+        id: r.following.Id,
+        name: r.following.name ?? "",
+        username: r.following.username ?? "",
+        profileImage: r.following.profile_image ?? null,
+        isFollowing: followingSet.has(r.following.Id),
+        isMe: currentUser?.id === r.following.Id,
+      })),
+  });
+});
+
 // ─── GET /api/users/:username ────────────────────────────────────────────────
 
 router.get("/:username", optionalAuth, async (req, res) => {

@@ -411,7 +411,7 @@ router.get("/:postId/comments", async (req, res) => {
     .from("Comments")
     .select(`
       id, post_id, text, reply_to_handle, created_at,
-      author:Profiles!user_id(Id, name, username)
+      author:Profiles!user_id(Id, name, username, profile_image)
     `)
     .eq("post_id", postId)
     .order("created_at", { ascending: false });
@@ -426,6 +426,7 @@ router.get("/:postId/comments", async (req, res) => {
       id: c.author?.Id ?? "",
       name: c.author?.name ?? "",
       username: c.author?.username ?? "",
+      profileImage: c.author?.profile_image ?? null,
     },
   }));
 

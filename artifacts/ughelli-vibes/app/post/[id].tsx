@@ -358,12 +358,29 @@ export default function PostDetailScreen() {
         contentContainerStyle={{ paddingBottom: bottomInset + 80 }}
         renderItem={({ item }) => (
           <View style={[styles.commentItem, { borderBottomColor: colors.border }]}>
-            <View style={[styles.commentAvatar, { backgroundColor: item.author.avatarColor }]}>
-              <Text style={styles.commentAvatarText}>{item.author.initials}</Text>
-            </View>
+            {/* Avatar — tappable → author's profile */}
+            <Pressable
+              onPress={() => router.push(`/user/${item.author.handle}` as any)}
+              style={[styles.commentAvatar, { backgroundColor: item.author.avatarColor }]}
+            >
+              {item.author.profileImage ? (
+                <Image
+                  source={{ uri: item.author.profileImage }}
+                  style={styles.commentAvatarImg}
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                />
+              ) : (
+                <Text style={styles.commentAvatarText}>{item.author.initials}</Text>
+              )}
+            </Pressable>
+
             <View style={{ flex: 1 }}>
               <View style={styles.commentNameRow}>
-                <Text style={[styles.commentName, { color: colors.foreground }]}>{item.author.name}</Text>
+                {/* Name — tappable → author's profile */}
+                <Pressable onPress={() => router.push(`/user/${item.author.handle}` as any)}>
+                  <Text style={[styles.commentName, { color: colors.foreground }]}>{item.author.name}</Text>
+                </Pressable>
                 {item.author.verified && <Feather name="check-circle" size={11} color={colors.primary} style={{ marginLeft: 3 }} />}
                 <Text style={[styles.commentTime, { color: colors.mutedForeground }]}> · {item.timeAgo}</Text>
               </View>
@@ -417,8 +434,18 @@ export default function PostDetailScreen() {
           </View>
         )}
         <View style={styles.replyRow}>
-          <View style={[styles.myAvatar, { backgroundColor: '#066A46' }]}>
-            <Text style={styles.myAvatarText}>{user ? getInitials(user.name) : '?'}</Text>
+          {/* Current-user avatar in reply bar */}
+          <View style={[styles.myAvatar, { backgroundColor: '#066A46', overflow: 'hidden' }]}>
+            {user?.profileImage ? (
+              <Image
+                source={{ uri: user.profileImage }}
+                style={{ width: 34, height: 34, borderRadius: 17 }}
+                contentFit="cover"
+                cachePolicy="memory-disk"
+              />
+            ) : (
+              <Text style={styles.myAvatarText}>{user ? getInitials(user.name) : '?'}</Text>
+            )}
           </View>
           <TextInput
             ref={replyInputRef}
@@ -501,7 +528,8 @@ const styles = StyleSheet.create({
   commentItem: {
     flexDirection: 'row', gap: 10, padding: 14, borderBottomWidth: 1,
   },
-  commentAvatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  commentAvatar: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  commentAvatarImg: { width: 36, height: 36, borderRadius: 18 },
   commentAvatarText: { color: '#FFFFFF', fontSize: 12, fontFamily: 'Inter_700Bold' },
   commentNameRow: { flexDirection: 'row', alignItems: 'center' },
   commentName: { fontSize: 14, fontFamily: 'Inter_600SemiBold' },

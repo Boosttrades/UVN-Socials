@@ -114,14 +114,19 @@ export default function UserProfileScreen() {
 
         <View style={[styles.statsRow, { borderColor: colors.border }]}>
           {[
-            { label: 'Updates', value: String(profile?.postsCount ?? 0) },
-            { label: 'Followers', value: String(profile?.followersCount ?? 0) },
-            { label: 'Following', value: String(profile?.followingCount ?? 0) },
+            { label: 'Updates', value: String(profile?.postsCount ?? 0), onPress: undefined },
+            { label: 'Followers', value: String(profile?.followersCount ?? 0), onPress: () => router.push({ pathname: '/followers', params: { username: username ?? '', type: 'followers' } } as any) },
+            { label: 'Following', value: String(profile?.followingCount ?? 0), onPress: () => router.push({ pathname: '/followers', params: { username: username ?? '', type: 'following' } } as any) },
           ].map((s, i) => (
-            <View key={s.label} style={[styles.stat, i < 2 && { borderRightWidth: 1, borderRightColor: colors.border }]}>
+            <Pressable
+              key={s.label}
+              onPress={s.onPress}
+              disabled={!s.onPress}
+              style={[styles.stat, i < 2 && { borderRightWidth: 1, borderRightColor: colors.border }]}
+            >
               <Text style={[styles.statVal, { color: colors.primary }]}>{s.value}</Text>
               <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{s.label}</Text>
-            </View>
+            </Pressable>
           ))}
         </View>
 
