@@ -88,11 +88,24 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
   }
 
   // ── Card colours ─────────────────────────────────────────────────────────────
-  const cardBg = isEmergency ? colors.emergencyBg : colors.card;
-  const cardBorder = isEmergency ? colors.emergency : colors.primary;
-  const divider = colors.border;
+  const cardBg = isEmergency
+    ? colors.emergencyBg
+    : isDark
+    ? 'rgba(15,138,95,0.07)'
+    : 'rgba(223,245,234,0.55)';
+  const cardBorder = isEmergency
+    ? colors.emergency
+    : isDark
+    ? 'rgba(34,197,139,0.22)'
+    : 'rgba(15,138,95,0.25)';
+  const divider = isDark ? 'rgba(34,197,139,0.12)' : 'rgba(15,138,95,0.14)';
   const foreground = colors.foreground;
   const mutedFg = colors.mutedForeground;
+
+  // Like button — desaturated sage, distinct from the card green
+  const likeActiveBg   = isDark ? 'rgba(143,218,188,0.15)' : 'rgba(95,184,143,0.14)';
+  const likeActiveBorder = isDark ? 'rgba(143,218,188,0.35)' : 'rgba(95,184,143,0.38)';
+  const likeActiveColor  = isDark ? '#8EDABC' : '#3A8C68';
 
   return (
     <TouchableOpacity
@@ -104,10 +117,22 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
         {
           backgroundColor: cardBg,
           borderColor: cardBorder,
-          borderWidth: isEmergency ? 2 : 1.5,
+          borderWidth: isEmergency ? 2 : 1,
         },
       ]}
+
     >
+      {/* Left accent strip — WhatsApp bubble feel */}
+      {!isEmergency && (
+        <View
+          style={[
+            styles.accentStrip,
+            { backgroundColor: isDark ? 'rgba(34,197,139,0.55)' : 'rgba(15,138,95,0.45)' },
+          ]}
+          pointerEvents="none"
+        />
+      )}
+
       {/* Top row: category badge */}
       <View style={styles.topRow}>
         <View style={[styles.categoryBadge, { backgroundColor: catColors.bg }]}>
@@ -272,18 +297,24 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
 
       {/* Reaction row */}
       <View style={[styles.reactionRow, { borderTopColor: divider }]}>
+        {/* Like — desaturated sage glass, clearly distinct from card tint */}
         <Pressable
-          style={[styles.reactionBtn, liked && {
-            backgroundColor: isDark ? 'rgba(34,197,139,0.14)' : 'rgba(15,138,95,0.08)',
-          }]}
+          style={[
+            styles.reactionBtn,
+            liked && {
+              backgroundColor: likeActiveBg,
+              borderWidth: 1,
+              borderColor: likeActiveBorder,
+            },
+          ]}
           onPress={handleLike}
         >
           <Ionicons
             name={liked ? 'thumbs-up' : 'thumbs-up-outline'}
             size={15}
-            color={liked ? colors.primary : mutedFg}
+            color={liked ? likeActiveColor : mutedFg}
           />
-          <Text style={[styles.reactionCount, { color: liked ? colors.primary : mutedFg }]}>
+          <Text style={[styles.reactionCount, { color: liked ? likeActiveColor : mutedFg }]}>
             {formatCount(likeCount)}
           </Text>
         </Pressable>
@@ -302,14 +333,16 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
 
         <Pressable
           style={[styles.reactionBtn, bookmarked && {
-            backgroundColor: isDark ? 'rgba(34,197,139,0.14)' : 'rgba(15,138,95,0.08)',
+            backgroundColor: likeActiveBg,
+            borderWidth: 1,
+            borderColor: likeActiveBorder,
           }]}
           onPress={handleBookmark}
         >
           <Ionicons
             name={bookmarked ? 'bookmark' : 'bookmark-outline'}
             size={15}
-            color={bookmarked ? colors.primary : mutedFg}
+            color={bookmarked ? likeActiveColor : mutedFg}
           />
         </Pressable>
       </View>
@@ -322,18 +355,30 @@ const styles = StyleSheet.create({
     marginHorizontal: 14,
     marginVertical: 6,
     borderRadius: 20,
-    padding: 16,
+    paddingTop: 16,
+    paddingBottom: 16,
+    paddingLeft: 20,   // extra left room for the accent strip
+    paddingRight: 16,
     borderWidth: 1,
-    // Elevation/shadow gives depth over the network layer below
+    overflow: 'hidden',
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.18,
-        shadowRadius: 16,
+        shadowColor: '#0F8A5F',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.10,
+        shadowRadius: 12,
       },
-      android: { elevation: 4 },
+      android: { elevation: 3 },
     }),
+  },
+  accentStrip: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    borderTopLeftRadius: 20,
+    borderBottomLeftRadius: 20,
   },
   topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   categoryBadge: {
