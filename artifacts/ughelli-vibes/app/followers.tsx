@@ -177,8 +177,8 @@ export default function FollowersScreen() {
               </Text>
               <Text style={[styles.emptyHint, { color: colors.mutedForeground }]}>
                 {isFollowers
-                  ? 'When people follow this account they'll appear here'
-                  : 'When this account follows people they'll appear here'}
+                  ? "When people follow this account they'll appear here"
+                  : "When this account follows people they'll appear here"}
               </Text>
             </View>
           }

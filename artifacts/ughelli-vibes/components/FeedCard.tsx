@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import ImageLightbox from '@/components/ImageLightbox';
+import ShareSheet from '@/components/ShareSheet';
 import {
   Platform,
   Pressable,
-  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -18,7 +18,7 @@ import { useColors } from '@/hooks/useColors';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { CATEGORY_COLORS, type FeedPost } from '@/constants/mockData';
-import { commentsQueryKey, useBookmarkPost, useLikePost, useSharePost } from '@/hooks/usePosts';
+import { commentsQueryKey, useBookmarkPost, useLikePost } from '@/hooks/usePosts';
 import { apiRequest } from '@/utils/api';
 
 const IMAGE_CACHE_POLICY = 'memory-disk' as const;
@@ -43,8 +43,8 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
   const queryClient = useQueryClient();
   const likePost = useLikePost();
   const bookmarkPost = useBookmarkPost();
-  const sharePost = useSharePost();
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [shareSheetVisible, setShareSheetVisible] = useState(false);
 
   const liked = post.isLiked;
   const bookmarked = post.isBookmarked;
@@ -80,11 +80,10 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
     });
   }
 
-  async function handleShare() {
-    sharePost.mutate(post.id);
-    try {
-      await Share.share({ message: `${post.headline}\n\nShared via Ughelli Vibes TV`, title: post.headline });
-    } catch {}
+  function handleShare() {
+    if (!token) { router.push('/auth/login' as any); return; }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShareSheetVisible(true);
   }
 
   // ── Card colours ─────────────────────────────────────────────────────────────
@@ -251,6 +250,14 @@ export default function FeedCard({ post, onPress }: FeedCardProps) {
         uris={(post.imageSources ?? []).map((s) => (typeof s === 'string' ? s : s?.uri ?? ''))}
         initialIndex={lightboxIndex ?? 0}
         onClose={() => setLightboxIndex(null)}
+      />
+
+      <ShareSheet
+        visible={shareSheetVisible}
+        onClose={() => setShareSheetVisible(false)}
+        postId={post.id}
+        headline={post.headline}
+        body={post.body}
       />
 
       {/* Job details */}
