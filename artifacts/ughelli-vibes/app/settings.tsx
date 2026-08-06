@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -134,9 +135,18 @@ export default function SettingsScreen() {
           accessibilityRole="button"
           accessibilityLabel="Edit profile"
         >
-          <View style={[styles.profileAvatar, { backgroundColor: colors.primary }]}>
-            <Text style={styles.profileAvatarText}>{initials}</Text>
-          </View>
+          {user?.profileImage ? (
+            <Image
+              source={{ uri: user.profileImage }}
+              style={styles.profileAvatar}
+              contentFit="cover"
+              transition={200}
+            />
+          ) : (
+            <View style={[styles.profileAvatar, { backgroundColor: colors.primary }]}>
+              <Text style={styles.profileAvatarText}>{initials}</Text>
+            </View>
+          )}
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Text style={[styles.profileName, { color: colors.foreground }]} numberOfLines={1}>

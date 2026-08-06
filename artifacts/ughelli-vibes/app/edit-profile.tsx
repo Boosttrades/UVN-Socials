@@ -14,9 +14,11 @@ import { Image } from 'expo-image';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useColors } from '@/hooks/useColors';
 import { useAuth } from '@/contexts/AuthContext';
-import { ApiError } from '@/utils/api';
+import { ApiError, apiRequest, getApiBase } from '@/utils/api';
 
 const COOLDOWN_DAYS = 14;
 
@@ -48,7 +50,7 @@ export default function EditProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user, updateProfile } = useAuth();
+  const { user, token, updateProfile, updateProfileImage } = useAuth();
 
   const topInset = Platform.OS === 'web' ? 67 : insets.top;
   const bottomPad = Platform.OS === 'web' ? 40 : insets.bottom + 24;
@@ -59,6 +61,71 @@ export default function EditProfileScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const [photoError, setPhotoError] = useState('');
+
+  async function handleChangePhoto() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setPhotoError('Photo library access is needed to change your photo.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
+
+    if (result.canceled || !result.assets[0]) return;
+
+    setPhotoError('');
+    setPhotoLoading(true);
+    try {
+      // Compress to a square avatar-friendly size
+      const compressed = await ImageManipulator.manipulateAsync(
+        result.assets[0].uri,
+        [{ resize: { width: 400 } }],
+        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+      ).catch(() => ({ uri: result.assets[0].uri }));
+
+      // Fetch blob
+      const fileResponse = await fetch(compressed.uri);
+      const blob = await fileResponse.blob();
+      const contentType = blob.type || 'image/jpeg';
+
+      // Get signed upload URL from API
+      const { uploadURL, publicUrl } = await apiRequest<{
+        uploadURL: string;
+        objectPath: string;
+        publicUrl: string;
+      }>('/storage/uploads/request-url', {
+        method: 'POST',
+        token,
+        body: {
+          name: `avatar-${user?.id}-${Date.now()}`,
+          size: blob.size,
+          contentType,
+        },
+      });
+
+      // Upload directly to storage
+      const putRes = await fetch(uploadURL, {
+        method: 'PUT',
+        headers: { 'Content-Type': contentType },
+        body: blob,
+      });
+      if (!putRes.ok) throw new Error('Upload failed. Please try again.');
+
+      // Save the new URL to the profile
+      await updateProfileImage(publicUrl);
+    } catch (err) {
+      setPhotoError(err instanceof Error ? err.message : 'Could not update photo. Please try again.');
+    } finally {
+      setPhotoLoading(false);
+    }
+  }
 
   const remaining = useMemo(() => daysRemaining(user?.profileUpdatedAt ?? null), [user?.profileUpdatedAt]);
   const inCooldown = remaining > 0;
@@ -128,20 +195,31 @@ export default function EditProfileScreen() {
           {/* ── Profile header ──────────────────────────────────────────── */}
           {user && (
             <View style={[styles.profileHeader, { borderBottomColor: colors.border }]}>
-              {user.profileImage ? (
-                <Image
-                  source={{ uri: user.profileImage }}
-                  style={styles.avatar}
-                  contentFit="cover"
-                  transition={200}
-                />
-              ) : (
-                <View style={[styles.avatar, { backgroundColor: avatarBg(user.id), alignItems: 'center', justifyContent: 'center' }]}>
-                  <Text style={styles.avatarInitials}>{initials(user.name || user.username)}</Text>
+              <Pressable onPress={handleChangePhoto} disabled={photoLoading} style={styles.avatarWrap}>
+                {user.profileImage ? (
+                  <Image
+                    source={{ uri: user.profileImage }}
+                    style={styles.avatar}
+                    contentFit="cover"
+                    transition={200}
+                  />
+                ) : (
+                  <View style={[styles.avatar, { backgroundColor: avatarBg(user.id), alignItems: 'center', justifyContent: 'center' }]}>
+                    <Text style={styles.avatarInitials}>{initials(user.name || user.username)}</Text>
+                  </View>
+                )}
+                <View style={[styles.avatarOverlay, { backgroundColor: 'rgba(0,0,0,0.45)' }]}>
+                  {photoLoading
+                    ? <ActivityIndicator size="small" color="#FFFFFF" />
+                    : <Feather name="camera" size={18} color="#FFFFFF" />}
                 </View>
-              )}
+              </Pressable>
               <Text style={[styles.profileName, { color: colors.foreground }]}>{user.name}</Text>
               <Text style={[styles.profileUsername, { color: colors.mutedForeground }]}>@{user.username}</Text>
+              <Text style={[styles.changePhotoLabel, { color: colors.primary }]}>Change Photo</Text>
+              {photoError ? (
+                <Text style={[styles.photoErrorText, { color: '#DC2626' }]}>{photoError}</Text>
+              ) : null}
             </View>
           )}
 
@@ -283,16 +361,40 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     gap: 6,
   },
+  avatarWrap: {
+    position: 'relative',
+    width: 80,
+    height: 80,
+    marginBottom: 4,
+  },
   avatar: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    marginBottom: 4,
+  },
+  avatarOverlay: {
+    position: 'absolute',
+    inset: 0,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   avatarInitials: {
     color: '#FFFFFF',
     fontSize: 28,
     fontFamily: 'Inter_700Bold',
+  },
+  changePhotoLabel: {
+    fontSize: 13,
+    fontFamily: 'Inter_600SemiBold',
+    marginTop: 2,
+  },
+  photoErrorText: {
+    fontSize: 12,
+    fontFamily: 'Inter_400Regular',
+    marginTop: 4,
+    textAlign: 'center',
+    paddingHorizontal: 24,
   },
   profileName: {
     fontSize: 18,

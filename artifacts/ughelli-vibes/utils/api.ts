@@ -40,10 +40,23 @@ export async function apiRequest<T = unknown>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  const data = await response.json();
+  // Guard against non-JSON responses (HTML error pages, proxy errors, etc.)
+  const contentType = response.headers.get('content-type') ?? '';
+  let data: Record<string, unknown> = {};
+  if (contentType.includes('application/json')) {
+    try {
+      data = await response.json();
+    } catch {
+      // JSON parse failed — treat as empty body
+    }
+  }
 
   if (!response.ok) {
-    throw new ApiError(data.error ?? 'Something went wrong', response.status, data);
+    throw new ApiError(
+      typeof data.error === 'string' ? data.error : `Request failed (${response.status})`,
+      response.status,
+      data
+    );
   }
 
   return data as T;
